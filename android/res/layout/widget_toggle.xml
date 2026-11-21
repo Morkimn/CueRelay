@@ -1,0 +1,14 @@
+<ViewFlipper xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/toggle"
+    android:layout_width="wrap_content" android:layout_height="wrap_content"
+    android:animateFirstView="false" android:inAnimation="@anim/icon_in" android:outAnimation="@anim/icon_out"
+    android:background="@drawable/play_green_dark">
+    <ImageView android:id="@+id/play_glyph" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:padding="8dp" android:scaleType="centerInside" android:src="@drawable/ic_play"
+        android:importantForAccessibility="no"/>
+    <ImageView android:id="@+id/pause_glyph" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:padding="8dp" android:scaleType="centerInside" android:src="@drawable/ic_pause"
+        android:importantForAccessibility="no"/>
+    <ImageView android:id="@+id/retry_glyph" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:padding="8dp" android:scaleType="centerInside" android:src="@drawable/ic_retry"
+        android:importantForAccessibility="no"/>
+</ViewFlipper>

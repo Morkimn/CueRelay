@@ -1,0 +1,49 @@
+package com.codex.pocketplayer;
+
+import android.content.ContentProvider;
+import android.content.ContentValues;
+import android.content.Context;
+import android.database.Cursor;
+import android.database.MatrixCursor;
+import android.net.Uri;
+import android.os.ParcelFileDescriptor;
+import android.provider.OpenableColumns;
+import java.io.File;
+import java.io.FileNotFoundException;
+
+public final class SharedFiles extends ContentProvider {
+    static Uri uri(Context context, String name) {
+        return new Uri.Builder().scheme("content").authority(context.getPackageName() + ".files").appendPath(name).build();
+    }
+
+    private File resolve(Uri uri) {
+        if (uri.getPathSegments().size() != 1) throw new IllegalArgumentException("Invalid sharing path");
+        String name = uri.getLastPathSegment();
+        if (ReleaseUpdates.APK.equals(name)) return new File(getContext().getCacheDir(), "updates/" + name);
+        throw new IllegalArgumentException("Unknown shared file");
+    }
+
+    @Override public boolean onCreate() { return true; }
+    @Override public String getType(Uri uri) {
+        return resolve(uri).getName().endsWith(".apk") ? "application/vnd.android.package-archive" : "text/plain";
+    }
+    @Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
+        if (!"r".equals(mode)) throw new FileNotFoundException("File is read-only");
+        return ParcelFileDescriptor.open(resolve(uri), ParcelFileDescriptor.MODE_READ_ONLY);
+    }
+    @Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String order) {
+        File file = resolve(uri);
+        String[] columns = projection == null ? new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE} : projection;
+        Object[] values = new Object[columns.length];
+        for (int i = 0; i < columns.length; i++) {
+            if (OpenableColumns.DISPLAY_NAME.equals(columns[i])) values[i] = file.getName();
+            if (OpenableColumns.SIZE.equals(columns[i])) values[i] = file.length();
+        }
+        MatrixCursor cursor = new MatrixCursor(columns, 1);
+        if (file.isFile()) cursor.addRow(values);
+        return cursor;
+    }
+    @Override public Uri insert(Uri uri, ContentValues values) { throw new UnsupportedOperationException(); }
+    @Override public int update(Uri uri, ContentValues values, String where, String[] args) { throw new UnsupportedOperationException(); }
+    @Override public int delete(Uri uri, String where, String[] args) { throw new UnsupportedOperationException(); }
+}

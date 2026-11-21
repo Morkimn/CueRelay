@@ -1,0 +1,12 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root" android:layout_width="match_parent"
+    android:layout_height="match_parent" android:gravity="center_vertical" android:padding="7dp" android:background="@drawable/widget_dark">
+    <ImageView android:id="@+id/page_previous" android:layout_width="34dp" android:layout_height="34dp"
+    android:contentDescription="Предыдущий источник" android:src="@drawable/ic_left" android:padding="6dp" android:scaleType="centerInside"/>
+    <TextView android:id="@+id/choice_0" android:layout_width="0dp" android:layout_weight="1" android:layout_height="44dp"
+    android:gravity="center_vertical" android:ellipsize="end" android:singleLine="true"
+    android:fontFamily="@font/google_sans_medium" android:paddingStart="8dp" android:paddingEnd="8dp" android:textSize="13sp"/>
+    <ImageView android:id="@+id/page_next" android:layout_width="34dp" android:layout_height="34dp"
+    android:contentDescription="Следующий источник" android:src="@drawable/ic_right" android:padding="6dp" android:scaleType="centerInside"/>
+    <ImageView android:id="@+id/panel_close" android:layout_width="34dp" android:layout_height="34dp"
+    android:contentDescription="Закрыть список" android:src="@drawable/ic_close" android:padding="6dp" android:scaleType="centerInside"/>
+</LinearLayout>

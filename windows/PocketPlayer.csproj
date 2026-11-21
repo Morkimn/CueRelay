@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>CueRelay</AssemblyName>
+    <Version>0.7.0</Version>
+    <Product>CueRelay</Product>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="QRCoder" Version="1.7.0" />
+    <None Include="..\licenses\QRCoder-LICENSE.txt" Link="licenses\QRCoder-LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\licenses\GoogleSans-OFL.txt" Link="licenses\GoogleSans-OFL.txt" CopyToPublishDirectory="PreserveNewest" />
+    <Resource Include="Fonts\*.ttf" />
+    <EmbeddedResource Include="..\Update-Channel.txt" LogicalName="CueRelay.UpdateChannel" />
+    <EmbeddedResource Include="..\android\res\drawable\ic_*.xml" LogicalName="Tempo.Icons.%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

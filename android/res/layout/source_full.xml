@@ -1,0 +1,22 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root" android:layout_width="match_parent"
+    android:layout_height="match_parent" android:orientation="vertical" android:padding="8dp" android:background="@drawable/widget_dark">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="34dp" android:gravity="center_vertical">
+        <TextView android:id="@+id/source_heading" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:fontFamily="@font/google_sans_medium" android:paddingStart="8dp" android:text="Источники" android:textSize="14sp"/>
+        <ImageView android:id="@+id/page_previous" android:layout_width="32dp" android:layout_height="32dp"
+    android:contentDescription="Предыдущая страница" android:src="@drawable/ic_left" android:padding="6dp" android:scaleType="centerInside"/>
+        <ImageView android:id="@+id/page_next" android:layout_width="32dp" android:layout_height="32dp"
+    android:contentDescription="Следующая страница" android:src="@drawable/ic_right" android:padding="6dp" android:scaleType="centerInside"/>
+        <ImageView android:id="@+id/panel_close" android:layout_width="32dp" android:layout_height="32dp"
+    android:contentDescription="Закрыть список" android:src="@drawable/ic_close" android:padding="6dp" android:scaleType="centerInside"/>
+    </LinearLayout>
+    <TextView android:id="@+id/choice_0" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+    android:gravity="center_vertical" android:ellipsize="end" android:singleLine="true"
+    android:fontFamily="@font/google_sans_medium" android:paddingStart="8dp" android:paddingEnd="8dp" android:textSize="13sp"/>
+    <TextView android:id="@+id/choice_1" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+    android:gravity="center_vertical" android:ellipsize="end" android:singleLine="true"
+    android:fontFamily="@font/google_sans_medium" android:paddingStart="8dp" android:paddingEnd="8dp" android:textSize="13sp"/>
+    <TextView android:id="@+id/choice_2" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+    android:gravity="center_vertical" android:ellipsize="end" android:singleLine="true"
+    android:fontFamily="@font/google_sans_medium" android:paddingStart="8dp" android:paddingEnd="8dp" android:textSize="13sp"/>
+</LinearLayout>
