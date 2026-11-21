@@ -1300,7 +1300,7 @@ internal sealed class Dashboard : W.Window
                 Background = M.Brushes.White, CornerRadius = new W.CornerRadius(17), Width = 225, Height = 225,
                 Margin = new W.Thickness(0, 14, 0, 12), Child = image,
             });
-            content.Children.Add(Row("Скопировать временный код", "Вставляй только в CueRelay на своём телефоне.", false, () =>
+            content.Children.Add(Row("Скопировать временный код", "", false, () =>
             {
                 if (payload is null) return;
                 try

@@ -9,7 +9,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>CueRelay</AssemblyName>
-    <Version>0.7.1</Version>
+    <Version>0.7.2</Version>
     <Product>CueRelay</Product>
   </PropertyGroup>
   <ItemGroup>
