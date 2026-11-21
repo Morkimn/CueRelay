@@ -65,7 +65,8 @@ public final class MainActivity extends Activity {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final ExecutorService updatesExecutor = Executors.newSingleThreadExecutor();
     private ReleaseUpdates.Release availableUpdate;
-    private Button updateNotice;
+    private Button updateNotice, checkUpdateButton, installUpdateButton;
+    private TextView updateDetails;
     private Dialog updateSheet;
     private String updateStatus = "", logExport;
     private long nextUpdateCheck;
@@ -789,9 +790,11 @@ public final class MainActivity extends Activity {
         updatesExecutor.execute(() -> {
             ReleaseUpdates.Release release = null;
             String status = "";
+            boolean checked = false;
             try {
                 release = ReleaseUpdates.check(this);
-                if (release == null) status = "Установлена актуальная версия.";
+                checked = true;
+                if (release == null) status = "Версия актуальна";
                 Diagnostics.record(this, "updates", release == null ? "up_to_date" : "update_available", null);
             } catch (Exception error) {
                 status = "Не удалось проверить обновления. Попробуй позже.";
@@ -799,10 +802,11 @@ public final class MainActivity extends Activity {
             }
             ReleaseUpdates.Release result = release;
             String message = status;
+            boolean succeeded = checked;
             ui.post(() -> {
                 if (isDestroyed() || isFinishing()) return;
                 checkingUpdates = false;
-                if (result != null || "Установлена актуальная версия.".equals(message)) availableUpdate = result;
+                if (succeeded) availableUpdate = result;
                 updateStatus = message;
                 paintUpdateNotice();
                 refreshUpdatePanel();
@@ -811,31 +815,50 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshUpdatePanel() {
-        if (sheet != null && sheet == updateSheet) updatesPanel();
+        if (sheet != null && sheet == updateSheet) paintUpdatePanel();
+    }
+
+    private void paintUpdatePanel() {
+        ReleaseUpdates.Release release = availableUpdate;
+        updateDetails.setText(!updateStatus.isEmpty() ? updateStatus :
+            release == null ? "Проверка через GitHub Releases" : "Доступна версия " + release.version);
+        updateDetails.setTextColor(release != null && updateStatus.isEmpty() ? accent : dim);
+        enabled(checkUpdateButton, !checkingUpdates && !installingUpdate);
+        enabled(installUpdateButton, !checkingUpdates && !installingUpdate);
+        installUpdateButton.setVisibility(release == null ? View.GONE : View.VISIBLE);
     }
 
     private void updatesPanel() {
         panel("Обновления", body -> {
-            body.addView(label("Установлена версия " + ReleaseUpdates.currentVersion(this), 16, text, true));
-            ReleaseUpdates.Release release = availableUpdate;
-            if (release != null) {
-                gap(body, 5);
-                body.addView(label("Доступна версия " + release.version, 15, accent, true));
-            }
-            if (!updateStatus.isEmpty()) {
-                gap(body, 6);
-                body.addView(label(updateStatus, 14, dim, false));
-            }
+            LinearLayout summary = column();
+            summary.setPadding(dp(13), dp(12), dp(13), dp(12));
+            summary.setBackground(shape(Appearance.mix(panel, raised, .72), 20));
+            LinearLayout heading = row();
+            ImageView logo = icon(R.drawable.ic_logo, null, onAccent, 8);
+            logo.setBackground(shape(accent, 11));
+            heading.addView(logo, new LinearLayout.LayoutParams(dp(35), dp(35)));
+            TextView name = label("CueRelay", 16, text, true);
+            name.setPadding(dp(10), 0, dp(7), 0);
+            heading.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+            TextView version = label("v" + ReleaseUpdates.currentVersion(this), 12, text, true);
+            version.setPadding(dp(10), dp(5), dp(10), dp(5));
+            version.setBackground(shape(panel, 13));
+            heading.addView(version);
+            summary.addView(heading);
+            gap(summary, 8);
+            updateDetails = label("", 13, dim, false);
+            summary.addView(updateDetails);
+            body.addView(summary);
             gap(body, 12);
-            Button check = button("Проверить обновления", false, this::checkUpdates);
-            enabled(check, !checkingUpdates && !installingUpdate);
-            body.addView(check, full(46));
-            if (release != null) {
-                gap(body, 6);
-                Button install = button("Скачать и установить", true, () -> installUpdate(release));
-                enabled(install, !checkingUpdates && !installingUpdate);
-                body.addView(install, full(49));
-            }
+            installUpdateButton = button("Скачать и установить", true, () -> {
+                if (availableUpdate != null) installUpdate(availableUpdate);
+            });
+            LinearLayout.LayoutParams installSize = full(49);
+            installSize.bottomMargin = dp(6);
+            body.addView(installUpdateButton, installSize);
+            checkUpdateButton = button("Проверить обновления", false, this::checkUpdates);
+            body.addView(checkUpdateButton, full(46));
+            paintUpdatePanel();
         }, this::settings, true);
         updateSheet = sheet;
     }

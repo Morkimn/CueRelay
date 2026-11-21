@@ -43,6 +43,8 @@ internal sealed class Dashboard : W.Window
     private C.Grid root = null!;
     private C.Grid? overlay;
     private C.Button updateNotice = null!;
+    private C.Button checkUpdateButton = null!, installUpdateButton = null!;
+    private C.TextBlock updateDetails = null!;
     private ReleaseUpdates.Release? availableUpdate;
     private string updateStatus = "";
     private bool checkingUpdates, installingUpdate;
@@ -872,11 +874,11 @@ internal sealed class Dashboard : W.Window
         checkingUpdates = true;
         nextUpdateCheck = Environment.TickCount64 + (long)TimeSpan.FromHours(6).TotalMilliseconds;
         updateStatus = "Проверяем GitHub…";
-        if (panel == Panel.Update) OpenPanel(Panel.Update, animate: false);
+        PaintUpdatePanel();
         try
         {
             availableUpdate = await ReleaseUpdates.Check(CancellationToken.None);
-            updateStatus = availableUpdate is null ? "Установлена актуальная версия." : "";
+            updateStatus = availableUpdate is null ? "Версия актуальна" : "";
             Diagnostics.Record("updates", availableUpdate is null ? "up_to_date" : "update_available");
         }
         catch (Exception error)
@@ -888,27 +890,61 @@ internal sealed class Dashboard : W.Window
         {
             checkingUpdates = false;
             PaintUpdateNotice();
-            if (panel == Panel.Update) OpenPanel(Panel.Update, animate: false);
+            PaintUpdatePanel();
         }
     }
 
     private void ShowUpdates(C.StackPanel content)
     {
-        content.Children.Add(Text($"Установлена версия {ReleaseUpdates.CurrentVersion.ToString(3)}", 15, palette.Text, true));
-        if (availableUpdate is { } release)
-            content.Children.Add(Text($"Доступна версия {release.Version}", 14, palette.Accent, true));
-        if (updateStatus.Length > 0) content.Children.Add(Text(updateStatus, 13, palette.Muted));
-        Section(content, "GitHub Releases");
-        var check = Button("Проверить обновления", () => _ = CheckUpdates());
-        check.IsEnabled = !checkingUpdates && !installingUpdate;
-        content.Children.Add(check);
-        if (availableUpdate is { } update)
+        var summary = new C.StackPanel();
+        var heading = new C.DockPanel();
+        var version = new C.Border
         {
-            var install = Button("Скачать и установить", () => _ = InstallUpdate(update), primary: true);
-            install.Margin = new W.Thickness(0, 6, 0, 0);
-            install.IsEnabled = check.IsEnabled;
-            content.Children.Add(install);
-        }
+            Child = Text($"v{ReleaseUpdates.CurrentVersion.ToString(3)}", 12, palette.Text, true),
+            Background = palette.Card, CornerRadius = new W.CornerRadius(13),
+            Padding = new W.Thickness(10, 5, 10, 5), VerticalAlignment = W.VerticalAlignment.Center
+        };
+        C.DockPanel.SetDock(version, C.Dock.Right);
+        heading.Children.Add(version);
+        var logo = new C.Border
+        {
+            Width = 35, Height = 35, CornerRadius = new W.CornerRadius(11), Background = palette.Accent,
+            Margin = new W.Thickness(0, 0, 10, 0), Child = Glyph(Logo, palette.OnAccent, 20)
+        };
+        C.DockPanel.SetDock(logo, C.Dock.Left);
+        heading.Children.Add(logo);
+        heading.Children.Add(Text(Program.Title, 16, palette.Text, true));
+        summary.Children.Add(heading);
+        updateDetails = Text("", 13, palette.Muted);
+        updateDetails.TextWrapping = W.TextWrapping.Wrap;
+        updateDetails.Margin = new W.Thickness(0, 8, 0, 0);
+        summary.Children.Add(updateDetails);
+        content.Children.Add(new C.Border
+        {
+            Child = summary, Background = palette.GroupInset, CornerRadius = new W.CornerRadius(20),
+            Padding = new W.Thickness(13, 12, 13, 12), Margin = new W.Thickness(0, 0, 0, 12)
+        });
+        installUpdateButton = Button("Скачать и установить", () =>
+        {
+            if (availableUpdate is { } update) _ = InstallUpdate(update);
+        }, primary: true);
+        installUpdateButton.MinHeight = 49;
+        installUpdateButton.Margin = new W.Thickness(0, 0, 0, 6);
+        content.Children.Add(installUpdateButton);
+        checkUpdateButton = Button("Проверить обновления", () => _ = CheckUpdates());
+        checkUpdateButton.MinHeight = 46;
+        content.Children.Add(checkUpdateButton);
+        PaintUpdatePanel();
+    }
+
+    private void PaintUpdatePanel()
+    {
+        if (panel != Panel.Update) return;
+        updateDetails.Text = updateStatus.Length > 0 ? updateStatus : availableUpdate is { } update
+            ? $"Доступна версия {update.Version}" : "Проверка через GitHub Releases";
+        updateDetails.Foreground = availableUpdate is not null && updateStatus.Length == 0 ? palette.Accent : palette.Muted;
+        checkUpdateButton.IsEnabled = installUpdateButton.IsEnabled = !checkingUpdates && !installingUpdate;
+        installUpdateButton.Visibility = availableUpdate is null ? W.Visibility.Collapsed : W.Visibility.Visible;
     }
 
     private async Task InstallUpdate(ReleaseUpdates.Release update)
@@ -916,7 +952,7 @@ internal sealed class Dashboard : W.Window
         if (installingUpdate) return;
         installingUpdate = true;
         updateStatus = "Загружаем и проверяем установщик…";
-        OpenPanel(Panel.Update, animate: false);
+        PaintUpdatePanel();
         try
         {
             await ReleaseUpdates.Install(update, CancellationToken.None);
@@ -931,7 +967,7 @@ internal sealed class Dashboard : W.Window
         finally
         {
             installingUpdate = false;
-            if (panel == Panel.Update) OpenPanel(Panel.Update, animate: false);
+            PaintUpdatePanel();
         }
     }
 
