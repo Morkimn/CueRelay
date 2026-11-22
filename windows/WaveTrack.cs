@@ -11,10 +11,13 @@ public sealed class WaveTrack : W.FrameworkElement
         nameof(Played), typeof(M.Brush), typeof(WaveTrack), new W.FrameworkPropertyMetadata(M.Brushes.Black, W.FrameworkPropertyMetadataOptions.AffectsRender));
     public static readonly W.DependencyProperty RestProperty = W.DependencyProperty.Register(
         nameof(Rest), typeof(M.Brush), typeof(WaveTrack), new W.FrameworkPropertyMetadata(M.Brushes.Gray, W.FrameworkPropertyMetadataOptions.AffectsRender));
+    public static readonly W.DependencyProperty WavyProperty = W.DependencyProperty.Register(
+        nameof(Wavy), typeof(bool), typeof(WaveTrack), new W.FrameworkPropertyMetadata(true, W.FrameworkPropertyMetadataOptions.AffectsRender));
 
     public double Fraction { get => (double)GetValue(FractionProperty); set => SetValue(FractionProperty, value); }
     public M.Brush Played { get => (M.Brush)GetValue(PlayedProperty); set => SetValue(PlayedProperty, value); }
     public M.Brush Rest { get => (M.Brush)GetValue(RestProperty); set => SetValue(RestProperty, value); }
+    public bool Wavy { get => (bool)GetValue(WavyProperty); set => SetValue(WavyProperty, value); }
 
     protected override void OnRender(M.DrawingContext drawing)
     {
@@ -26,6 +29,11 @@ public sealed class WaveTrack : W.FrameworkElement
             drawing.DrawLine(RoundPen(Rest, 3), new W.Point(7 + end + gap, center), new W.Point(7 + width, center));
         double waveEnd = end - gap;
         if (waveEnd <= 0) return;
+        if (!Wavy)
+        {
+            drawing.DrawLine(RoundPen(Played, 3.5), new W.Point(7, center), new W.Point(7 + waveEnd, center));
+            return;
+        }
         var path = new M.StreamGeometry();
         using (var points = path.Open())
         {

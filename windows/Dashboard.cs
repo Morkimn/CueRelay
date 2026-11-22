@@ -37,6 +37,7 @@ internal sealed class Dashboard : W.Window
     private readonly DispatcherTimer timer;
     private readonly W.Style buttonStyle;
     private readonly C.ControlTemplate seekTemplate;
+    private readonly C.ControlTemplate volumeTemplate;
     private readonly C.ControlTemplate drawerScrollTemplate;
     private readonly C.ControlTemplate settingSwitchTemplate;
     private Palette palette;
@@ -62,10 +63,13 @@ internal sealed class Dashboard : W.Window
     private C.Slider seek = null!;
     private C.Slider volumeSlider = null!;
     private C.TextBlock volumeValue = null!;
-    private C.DockPanel volumeRow = null!;
+    private C.Button volumeButton = null!;
+    private C.Primitives.Popup volumePopup = null!;
     private C.Button dislike = null!, like = null!;
     private readonly DispatcherTimer volumeCommit = new() { Interval = TimeSpan.FromMilliseconds(150) };
+    private readonly DispatcherTimer volumeDismiss = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private bool syncingVolume;
+    private bool keyboardVolume;
     private long volumeQuietUntil;
     private C.StackPanel timelinePanel = null!;
     private C.TextBlock elapsed = null!, duration = null!;
@@ -92,6 +96,13 @@ internal sealed class Dashboard : W.Window
         this.media = media;
         this.phone = phone;
         usePhone = identity.StartWithPhone;
+        volumeDismiss.Tick += (_, _) =>
+        {
+            volumeDismiss.Stop();
+            if (!volumeButton.IsMouseOver && volumePopup.Child is { IsMouseOver: false, IsMouseCaptureWithin: false } child &&
+                (!keyboardVolume || !child.IsKeyboardFocusWithin))
+                CloseVolume();
+        };
         volumeCommit.Tick += async (_, _) =>
         {
             volumeCommit.Stop();
@@ -157,12 +168,12 @@ internal sealed class Dashboard : W.Window
                 </ControlTemplate.Triggers>
             </ControlTemplate>
             """);
-        seekTemplate = (C.ControlTemplate)XamlReader.Parse("""
+        C.ControlTemplate TrackTemplate(bool wavy) => (C.ControlTemplate)XamlReader.Parse($$$"""
             <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:p="clr-namespace:PocketPlayer;assembly=CueRelay"
                 TargetType="{x:Type Slider}">
                 <Grid Background="Transparent">
-                    <p:WaveTrack Fraction="{TemplateBinding Value}" Played="{TemplateBinding Foreground}"
+                    <p:WaveTrack Wavy="{{{wavy}}}" Fraction="{TemplateBinding Value}" Played="{TemplateBinding Foreground}"
                         Rest="{TemplateBinding Background}" IsHitTestVisible="False"/>
                     <Track x:Name="PART_Track" VerticalAlignment="Center">
                         <Track.DecreaseRepeatButton>
@@ -187,6 +198,8 @@ internal sealed class Dashboard : W.Window
                 </Grid>
             </ControlTemplate>
             """);
+        seekTemplate = TrackTemplate(true);
+        volumeTemplate = TrackTemplate(false);
         drawerScrollTemplate = (C.ControlTemplate)XamlReader.Parse("""
             <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" TargetType="{x:Type ScrollViewer}">
@@ -266,6 +279,7 @@ internal sealed class Dashboard : W.Window
             else
             {
                 timer.Stop();
+                CloseVolume();
                 ClosePanel(animate: false);
             }
         };
@@ -277,15 +291,25 @@ internal sealed class Dashboard : W.Window
         };
         PreviewKeyDown += (_, args) =>
         {
+            if (args.Key == I.Key.Escape && volumePopup.IsOpen)
+            {
+                bool restoreFocus = volumePopup.Child.IsKeyboardFocusWithin;
+                CloseVolume();
+                if (restoreFocus) volumeButton.Focus();
+                args.Handled = true;
+                return;
+            }
             if (args.Key != I.Key.Escape || panel == Panel.None) return;
             DismissPanel();
             args.Handled = true;
         };
+        Deactivated += (_, _) => CloseVolume();
         SourceInitialized += (_, _) => ApplyTitleBar();
     }
 
     private void Build()
     {
+        if (volumePopup is not null) CloseVolume();
         volumeCommit.Stop();
         volumeQuietUntil = 0;
         root = new C.Grid { Background = palette.Background };
@@ -347,8 +371,11 @@ internal sealed class Dashboard : W.Window
         playerDetails.Children.Add(details);
 
         playerDetails.Children.Add(BuildTimeline());
-        var controls = new C.StackPanel { Orientation = C.Orientation.Horizontal, HorizontalAlignment = W.HorizontalAlignment.Center,
-            Margin = new W.Thickness(0, 9, 0, 0) };
+        var playbackRow = new C.Grid { Margin = new W.Thickness(0, 9, 0, 0) };
+        playbackRow.ColumnDefinitions.Add(new C.ColumnDefinition());
+        playbackRow.ColumnDefinitions.Add(new C.ColumnDefinition { Width = W.GridLength.Auto });
+        playbackRow.ColumnDefinitions.Add(new C.ColumnDefinition { MinWidth = 42 });
+        var controls = new C.StackPanel { Orientation = C.Orientation.Horizontal };
         previous = IconButton("Предыдущий трек", Previous, 46, 48, false, () => Command("previous"));
         previous.Tag = new W.CornerRadius(17);
         toggle = IconButton("Воспроизвести", Play, 70, 61, true, () => Command("toggle"));
@@ -359,17 +386,19 @@ internal sealed class Dashboard : W.Window
         toggle.Margin = new W.Thickness(8, 0, 8, 0);
         next = IconButton("Следующий трек", Next, 46, 48, false, () => Command("next"));
         next.Tag = new W.CornerRadius(17);
-        dislike = IconButton("Дизлайк", "ic_dislike", 40, 43, false, () => Command("dislike"));
-        like = IconButton("Лайк", "ic_like", 40, 43, false, () => Command("like"));
-        dislike.Margin = new W.Thickness(6, 0, 0, 0);
-        like.Margin = new W.Thickness(0, 0, 6, 0);
-        controls.Children.Add(previous);
+        dislike = IconButton("Дизлайк", "ic_dislike", 36, 43, false, () => Command("dislike"));
+        like = IconButton("Лайк", "ic_like", 36, 43, false, () => Command("like"));
+        dislike.Margin = new W.Thickness(0, 0, 6, 0);
+        like.Margin = new W.Thickness(6, 0, 0, 0);
         controls.Children.Add(dislike);
+        controls.Children.Add(previous);
         controls.Children.Add(toggle);
-        controls.Children.Add(like);
         controls.Children.Add(next);
-        playerDetails.Children.Add(controls);
-        playerDetails.Children.Add(BuildVolume());
+        controls.Children.Add(like);
+        C.Grid.SetColumn(controls, 1);
+        playbackRow.Children.Add(controls);
+        BuildVolume(playbackRow);
+        playerDetails.Children.Add(playbackRow);
         playerRow.Children.Add(playerDetails);
         playerCard.Child = playerRow;
         body.Children.Add(playerCard);
@@ -558,6 +587,7 @@ internal sealed class Dashboard : W.Window
     private void SelectTarget(bool remote)
     {
         if (usePhone == remote) return;
+        CloseVolume();
         volumeCommit.Stop();
         volumeQuietUntil = 0;
         usePhone = remote;
@@ -611,19 +641,26 @@ internal sealed class Dashboard : W.Window
         RefreshTimeline();
     }
 
-    private C.DockPanel BuildVolume()
+    private void BuildVolume(C.Grid playbackRow)
     {
-        volumeRow = new C.DockPanel { Margin = new W.Thickness(5, 6, 5, 0) };
+        volumeButton = IconButton("Громкость", "ic_volume", 40, 40, false, () => OpenVolume(!volumeButton.IsMouseOver));
+        volumeButton.Tag = new W.CornerRadius(15);
+        volumeButton.ToolTip = null;
+        volumeButton.HorizontalAlignment = W.HorizontalAlignment.Right;
+        volumeButton.VerticalAlignment = W.VerticalAlignment.Center;
+        C.Grid.SetColumn(volumeButton, 2);
+        playbackRow.Children.Add(volumeButton);
+
+        var volumeRow = new C.DockPanel();
         volumeValue = Text("", 11, palette.Muted);
+        volumeValue.Width = 33;
+        volumeValue.TextAlignment = W.TextAlignment.Right;
         volumeValue.Margin = new W.Thickness(8, 0, 0, 0);
         C.DockPanel.SetDock(volumeValue, C.Dock.Right);
         volumeRow.Children.Add(volumeValue);
-        var textLabel = Text("Громкость", 12, palette.Muted);
-        textLabel.Margin = new W.Thickness(0, 0, 8, 0);
-        C.DockPanel.SetDock(textLabel, C.Dock.Left);
-        volumeRow.Children.Add(textLabel);
         volumeSlider = new C.Slider { Minimum = 0, Maximum = 1, SmallChange = .02, LargeChange = .1,
-            IsMoveToPointEnabled = true, Template = seekTemplate, Foreground = palette.Accent, Background = palette.Raised };
+            Height = 28, IsMoveToPointEnabled = true, Template = volumeTemplate,
+            Foreground = palette.Accent, Background = palette.DockSelection };
         AutomationProperties.SetName(volumeSlider, "Громкость");
         volumeSlider.ValueChanged += (_, _) =>
         {
@@ -634,15 +671,60 @@ internal sealed class Dashboard : W.Window
             volumeCommit.Start();
         };
         volumeRow.Children.Add(volumeSlider);
-        return volumeRow;
+        var surface = new C.Border { Width = 176, Padding = new W.Thickness(12, 7, 12, 7),
+            CornerRadius = new W.CornerRadius(16), Background = palette.Raised, Child = volumeRow };
+        volumePopup = new C.Primitives.Popup
+        {
+            Placement = C.Primitives.PlacementMode.Custom,
+            PlacementTarget = volumeButton,
+            AllowsTransparency = true,
+            Child = surface,
+            CustomPopupPlacementCallback = (popupSize, buttonSize, _) =>
+            [
+                new(new W.Point(buttonSize.Width - popupSize.Width, -popupSize.Height), C.Primitives.PopupPrimaryAxis.Vertical),
+                new(new W.Point(buttonSize.Width - popupSize.Width, buttonSize.Height), C.Primitives.PopupPrimaryAxis.Vertical)
+            ]
+        };
+        C.Grid.SetColumn(volumePopup, 2);
+        playbackRow.Children.Add(volumePopup);
+        volumeButton.MouseEnter += (_, _) => OpenVolume(false);
+        volumeButton.MouseLeave += (_, _) => volumeDismiss.Start();
+        surface.MouseEnter += (_, _) => volumeDismiss.Stop();
+        surface.MouseLeave += (_, _) => volumeDismiss.Start();
+        surface.LostMouseCapture += (_, _) => volumeDismiss.Start();
+        surface.LostKeyboardFocus += (_, _) => volumeDismiss.Start();
+        surface.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key != I.Key.Escape) return;
+            CloseVolume();
+            volumeButton.Focus();
+            args.Handled = true;
+        };
+    }
+
+    private void OpenVolume(bool keyboard)
+    {
+        if (volumeButton.Visibility != W.Visibility.Visible || panel != Panel.None) return;
+        volumeDismiss.Stop();
+        keyboardVolume |= keyboard;
+        volumePopup.IsOpen = true;
+        if (keyboard) volumeSlider.Focus();
+    }
+
+    private void CloseVolume()
+    {
+        volumeDismiss.Stop();
+        keyboardVolume = false;
+        volumePopup.IsOpen = false;
     }
 
     private void RefreshVolume()
     {
         int? level = usePhone ? phone.Current.Volume : media.Current.Volume;
-        volumeRow.Visibility = level.HasValue ? W.Visibility.Visible : W.Visibility.Collapsed;
+        volumeButton.Visibility = level.HasValue ? W.Visibility.Visible : W.Visibility.Collapsed;
         if (!level.HasValue)
         {
+            if (volumePopup.IsOpen) CloseVolume();
             volumeCommit.Stop();
             return;
         }
@@ -794,6 +876,7 @@ internal sealed class Dashboard : W.Window
 
     private void OpenPanel(Panel value, bool animate = true)
     {
+        CloseVolume();
         bool returnFromConfirmation = panel == Panel.Unpair && value == Panel.Device;
         if (panel is Panel.Settings or Panel.Appearance && drawerScroll is not null)
             settingsOffsets[panel] = drawerScroll.VerticalOffset;
