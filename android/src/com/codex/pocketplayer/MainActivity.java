@@ -1534,7 +1534,7 @@ public final class MainActivity extends Activity {
                         Diagnostics.record(this, "pairing", "peer_request_failed", error);
                     }
                 }
-                pairFailed(flow, "Не удалось связаться с ПК. В домашней сети проверь частный профиль Windows и подключение телефона к основной сети Wi-Fi. Затем обнови QR-код.");
+                pairFailed(flow, "Не удалось связаться с ПК. Проверь, что CueRelay установлен и запущен на ПК, а телефон подключён к основной сети Wi-Fi. Затем обнови QR-код.");
             } catch (Exception ignored) { pairFailed(flow, "Не удалось создать защищённое подключение."); }
         });
     }
