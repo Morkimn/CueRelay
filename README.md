@@ -8,6 +8,8 @@ Download the Windows x64 or ARM64 installer and the Android APK from [GitHub Rel
 
 Open CueRelay on both devices on the same home network. On Android, scan the QR code displayed on Windows. Compare the six digits on both screens, then approve on each device. To control Android from the PC, enable «Разрешить управление с ПК» in the Android app and grant Android notification access so CueRelay can discover active media sessions. The Windows firewall rule is limited to the private profile, the local subnet, and the app's TCP port.
 
+If scanning cannot reach the PC, check that Windows uses the Private profile for the trusted home network. Connect the phone to the main Wi-Fi network. Guest Wi-Fi and client isolation can prevent devices on the same router from reaching each other. When reporting an issue, export the diagnostic log separately from each device.
+
 Each QR contains a short-lived invitation, local addresses, and a public certificate fingerprint. It does not contain a paired phone's credential. Use the QR directly when possible. A copied invitation is for manual entry on the intended phone. CueRelay keeps it out of Windows clipboard history and clears its clipboard entry when it expires or the pairing screen closes.
 
 ## Updates and diagnostics
@@ -16,20 +18,25 @@ Both apps check GitHub Releases when open and announce a newer version in the in
 
 Use **Настройки → Диагностика** to view or save a JSON Lines log. Each line contains a UTC timestamp, platform, version, architecture, component and an event code. The app writes to the Windows temporary directory or the Android app cache. Logs are size-limited and older files are discarded at startup. They omit pairing codes, secrets, IP addresses, device names, and track metadata. Export is initiated by the user.
 
-## Build
+## Local development and releases
 
 On Windows, install the .NET 10 SDK and Inno Setup 6.7. Use PowerShell from the project directory.
 
 ```powershell
 New-Item -ItemType Directory -Force artifacts | Out-Null
-.\Build-Windows.ps1 -InnoCompiler 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' -OutputDirectory .\artifacts -Architecture x64
-.\Build-Windows.ps1 -InnoCompiler 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' -OutputDirectory .\artifacts -Architecture arm64
+.\Build-Windows.ps1 -OutputDirectory .\artifacts
+.\artifacts\CueRelay-Dev-x64\CueRelay.exe
+.\Build-Windows.ps1 -Mode Prod -InnoCompiler 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' -OutputDirectory .\artifacts -Architecture x64
+.\Build-Windows.ps1 -Mode Prod -InnoCompiler 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' -OutputDirectory .\artifacts -Architecture arm64
 ```
 
 Android needs a JDK, Android SDK Platform 35, Build Tools 35 and [ZXing Core 3.5.3](https://repo.maven.apache.org/maven2/com/google/zxing/core/3.5.3/core-3.5.3.jar).
 
 ```powershell
-.\Build-Android.ps1 -PlatformJar <android.jar> -BuildTools <build-tools> -ZxingJar <core.jar> -Output .\artifacts\CueRelay.apk -Keystore <keystore.p12>
+.\Build-Android.ps1 -PlatformJar <android.jar> -BuildTools <build-tools> -ZxingJar <core.jar> -Output .\artifacts\CueRelay-Dev.apk
+.\Build-Android.ps1 -Mode Prod -PlatformJar <android.jar> -BuildTools <build-tools> -ZxingJar <core.jar> -Output .\artifacts\CueRelay.apk -Keystore <keystore.p12>
 ```
 
 Android updates require the same package-signing key as the installed app. The official release manifest is signed with a separate key stored outside the repository. A maintainer can run `Sign-Release.ps1` with that Windows DPAPI-protected key, then attach both manifest files and the three installers to a GitHub Release tagged `v<version>`. Keep the APK signing key and the release signing key out of Git.
+
+Dev is the default in both build scripts. Use a local development branch for iterations and publish from main when preparing a release. CueRelay Dev uses a separate Windows profile, an Android application ID with its own local signing key, and TCP port 43199. Pair Dev with Dev. The Dev apps run alongside Prod and skip GitHub update checks. A physical phone test requires Windows to allow the Dev executable on the trusted private network.

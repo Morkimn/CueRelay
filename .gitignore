@@ -1,4 +1,4 @@
-.android-build/
+.android-build*/
 .windows-publish*/
 **/bin/
 **/obj/

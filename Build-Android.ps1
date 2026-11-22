@@ -3,12 +3,13 @@ param(
     [Parameter(Mandatory)] [string] $BuildTools,
     [Parameter(Mandatory)] [string] $ZxingJar,
     [Parameter(Mandatory)] [string] $Output,
-    [Parameter(Mandatory)] [string] $Keystore
+    [string] $Keystore,
+    [ValidateSet('Dev','Prod')] [string] $Mode = 'Dev'
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Join-Path $PSScriptRoot 'android'
-$build = Join-Path $PSScriptRoot '.android-build'
+$build = Join-Path $PSScriptRoot ".android-build-$Mode"
 $generated = Join-Path $build 'generated'
 $classes = Join-Path $build 'classes'
 $dex = Join-Path $build 'dex'
@@ -16,7 +17,36 @@ $assets = Join-Path $build 'assets'
 New-Item -ItemType Directory -Force $build, $generated, $classes, $dex, (Join-Path $assets 'licenses') | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'licenses\ZXing-LICENSE.txt'),
     (Join-Path $PSScriptRoot 'licenses\GoogleSans-OFL.txt') -Destination (Join-Path $assets 'licenses')
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Update-Channel.txt') -Destination $assets
+$manifest = Join-Path $root 'AndroidManifest.xml'
+$alias = 'pocket-player-dev'
+$profile = 'false'
+$port = 43198
+$title = 'CueRelay'
+if ($Mode -eq 'Dev') {
+    if ($Keystore) { throw 'Dev builds use their own generated key. Omit -Keystore.' }
+    if ([IO.Path]::GetFileName($Output) -ne 'CueRelay-Dev.apk') { throw 'Use CueRelay-Dev.apk for Dev output.' }
+    $profile = 'true'
+    $port = 43199
+    $title = 'CueRelay Dev'
+    $alias = 'cuerelay-local-dev'
+    $Keystore = Join-Path $build 'dev-signing.p12'
+    $manifestXml = (Get-Content -LiteralPath $manifest -Raw).Replace('package="com.codex.pocketplayer"', 'package="com.codex.pocketplayer.dev"').
+        Replace('android:authorities="com.codex.pocketplayer.files"', 'android:authorities="com.codex.pocketplayer.dev.files"').
+        Replace('android:name=".', 'android:name="com.codex.pocketplayer.').Replace('android:label="CueRelay', 'android:label="CueRelay Dev')
+    $manifest = Join-Path $build 'AndroidManifest.xml'
+    Set-Content -LiteralPath $manifest -Value $manifestXml -Encoding utf8
+} else {
+    if (!$Keystore -or !(Test-Path -LiteralPath $Keystore -PathType Leaf)) { throw 'Prod requires the existing release keystore.' }
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Update-Channel.txt') -Destination $assets
+}
+@"
+package com.codex.pocketplayer;
+final class BuildProfile {
+    static final boolean DEV = $profile;
+    static final int PORT = $port;
+    static final String TITLE = "$title";
+}
+"@ | Set-Content -LiteralPath (Join-Path $generated 'BuildProfile.java') -Encoding utf8
 $buildToolsPath = (Resolve-Path -LiteralPath $BuildTools).Path
 $jar = (Resolve-Path -LiteralPath $PlatformJar).Path
 $zxing = (Resolve-Path -LiteralPath $ZxingJar).Path
@@ -33,7 +63,7 @@ function Assert-Tool([string] $Name) {
 
 & $aapt compile --dir (Join-Path $root 'res') -o $compiled
 Assert-Tool 'aapt2 compile'
-& $aapt link -o $unsigned -I $jar -A $assets --manifest (Join-Path $root 'AndroidManifest.xml') --java $generated $compiled
+& $aapt link -o $unsigned -I $jar -A $assets --manifest $manifest --custom-package com.codex.pocketplayer --java $generated $compiled
 Assert-Tool 'aapt2 link'
 $sources = @(Get-ChildItem (Join-Path $root 'src'), $generated -Recurse -Filter '*.java' -File | ForEach-Object FullName)
 & (Join-Path $jdk 'javac.exe') -encoding UTF-8 --release 8 -Xlint:-options -classpath "$jar;$zxing" -d $classes @sources
@@ -48,12 +78,12 @@ Assert-Tool 'jar (dex)'
 Assert-Tool 'zipalign'
 
 if (!(Test-Path -LiteralPath $Keystore)) {
-    $generate = @('-genkeypair','-keystore',$Keystore,'-storepass','android','-keypass','android','-alias','pocket-player-dev',
+    $generate = @('-genkeypair','-keystore',$Keystore,'-storepass','android','-keypass','android','-alias',$alias,
         '-keyalg','RSA','-keysize','2048','-validity','3650','-dname','CN=Pocket Player Development')
     & (Join-Path $jdk 'keytool.exe') @generate
     Assert-Tool 'keytool'
 }
-$sign = @('sign','--ks',$Keystore,'--ks-key-alias','pocket-player-dev','--ks-pass','pass:android',
+$sign = @('sign','--ks',$Keystore,'--ks-key-alias',$alias,'--ks-pass','pass:android',
     '--key-pass','pass:android','--v4-signing-enabled','false','--out',$Output,$aligned)
 & (Join-Path $buildToolsPath 'apksigner.bat') @sign
 Assert-Tool 'apksigner'

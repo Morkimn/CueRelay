@@ -7,47 +7,52 @@ namespace PocketPlayer;
 
 internal static class Program
 {
-    public const int Port = 43198;
-    public const string Title = "CueRelay";
-    public const string AppMutex = @"Local\CodexPocketPlayer-run";
-    private const string OpenEvent = @"Local\CodexPocketPlayer-open";
-    private const string StopEvent = @"Local\CodexPocketPlayer-stop";
+    public static bool IsDevelopment { get; private set; }
+    public static int Port => IsDevelopment ? 43199 : 43198;
+    public static string Title => IsDevelopment ? "CueRelay Dev" : "CueRelay";
+    private static string EventPrefix => IsDevelopment ? @"Local\CueRelay-dev-" : @"Local\CodexPocketPlayer-";
 
     [STAThread]
     private static void Main(string[] args)
     {
+#if CUERELAY_DEV
+        IsDevelopment = true;
+#else
+        IsDevelopment = args.Contains("--development");
+#endif
+        string openEvent = EventPrefix + "open";
+        string stopEvent = EventPrefix + "stop";
         if (args.Contains("--stop"))
         {
-            Signal(StopEvent);
+            Signal(stopEvent);
             return;
         }
-        using var mutex = new Mutex(true, AppMutex, out var first);
+        using var mutex = new Mutex(true, EventPrefix + "run", out var first);
         if (!first)
         {
-            Signal(OpenEvent);
+            Signal(openEvent);
             return;
         }
 
         ApplicationConfiguration.Initialize();
-        bool test = args.Contains("--development");
-        var directory = test ? Environment.GetEnvironmentVariable("POCKET_PLAYER_DEV_DATA") :
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexPocketPlayer");
+        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            IsDevelopment ? "CueRelay-Dev" : "CodexPocketPlayer");
         try
         {
             Diagnostics.Record("app", "started");
-            using var identity = new Identity(directory ?? throw new InvalidOperationException("Set POCKET_PLAYER_DEV_DATA."));
+            using var identity = new Identity(directory);
             using var media = new Media(identity);
             var phone = new PhoneRemote(identity);
             using var cancellation = new CancellationTokenSource();
             var discovery = new Discovery(identity.ServiceName, Port);
-            var server = CreateServer(identity, media, phone, test, new IPEndPoint(IPAddress.Any, Port));
+            var server = CreateServer(identity, media, phone, IsDevelopment, new IPEndPoint(IPAddress.Any, Port));
             server.StartAsync().GetAwaiter().GetResult();
             Diagnostics.Record("server", "listening");
             var watcher = media.Watch(cancellation.Token, () => discovery.Refresh(Network.LocalAddresses()));
             try
             {
-                using var open = new EventWaitHandle(false, EventResetMode.AutoReset, OpenEvent);
-                using var stop = new EventWaitHandle(false, EventResetMode.AutoReset, StopEvent);
+                using var open = new EventWaitHandle(false, EventResetMode.AutoReset, openEvent);
+                using var stop = new EventWaitHandle(false, EventResetMode.AutoReset, stopEvent);
                 var desktop = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
                 using var tray = new Tray(desktop, identity, media, phone, open, stop, args.Contains("--background"));
                 desktop.Run();

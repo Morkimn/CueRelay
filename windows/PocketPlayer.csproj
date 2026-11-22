@@ -9,14 +9,17 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>CueRelay</AssemblyName>
-    <Version>0.7.3</Version>
+    <Version>0.7.4</Version>
     <Product>CueRelay</Product>
+    <ApplicationIcon>CueRelay.ico</ApplicationIcon>
+    <DefineConstants Condition="'$(CueRelayDevelopment)' == 'true'">$(DefineConstants);CUERELAY_DEV</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="QRCoder" Version="1.7.0" />
     <None Include="..\licenses\QRCoder-LICENSE.txt" Link="licenses\QRCoder-LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
     <None Include="..\licenses\GoogleSans-OFL.txt" Link="licenses\GoogleSans-OFL.txt" CopyToPublishDirectory="PreserveNewest" />
     <Resource Include="Fonts\*.ttf" />
+    <EmbeddedResource Include="CueRelay.ico" LogicalName="CueRelay.Icon" />
     <EmbeddedResource Include="..\Update-Channel.txt" LogicalName="CueRelay.UpdateChannel" />
     <EmbeddedResource Include="..\android\res\drawable\ic_*.xml" LogicalName="Tempo.Icons.%(Filename)%(Extension)" />
   </ItemGroup>

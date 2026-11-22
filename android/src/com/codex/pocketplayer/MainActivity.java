@@ -110,7 +110,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onResume() {
         super.onResume();
-        if (android.os.SystemClock.elapsedRealtime() >= nextUpdateCheck) checkUpdates();
+        if (!BuildProfile.DEV && android.os.SystemClock.elapsedRealtime() >= nextUpdateCheck) checkUpdates();
         if (PhoneLink.connection(this) != null) {
             PhoneLink.start(this, page == Page.SETTINGS ? "phone-settings" : "refresh", null);
             if (page == Page.SETTINGS && sheet == null) render(null);
@@ -231,7 +231,7 @@ public final class MainActivity extends Activity {
             logoSize.setMarginEnd(dp(10));
             header.addView(logo, logoSize);
         }
-        TextView name = label(playerPage ? "CueRelay" : page.label, playerPage ? 34 : 36, text, true);
+        TextView name = label(playerPage ? BuildProfile.TITLE : page.label, playerPage ? 34 : 36, text, true);
         name.setLetterSpacing(-0.027f);
         header.addView(name, paired && playerPage ? new LinearLayout.LayoutParams(-2, -2)
             : new LinearLayout.LayoutParams(0, -2, 1));
@@ -830,6 +830,11 @@ public final class MainActivity extends Activity {
     }
 
     private void updatesPanel() {
+        if (BuildProfile.DEV) {
+            panel("Обновления", body -> body.addView(label("Локальная сборка Dev", 15, text, true)),
+                this::settings, true);
+            return;
+        }
         panel("Обновления", body -> {
             LinearLayout summary = column();
             summary.setPadding(dp(13), dp(12), dp(13), dp(12));
@@ -1519,10 +1524,17 @@ public final class MainActivity extends Activity {
                         ui.post(() -> confirmPair(flow, client, address, answer.optString("computer"), check));
                         return;
                     } catch (DeskClient.Status status) {
+                        Diagnostics.record(this, "pairing", status.code == 403 ? "invitation_rejected" : "http_error", status);
                         if (status.code == 403) { pairFailed(flow, "Этот QR-код больше не действует. Обнови его на ПК."); return; }
-                    } catch (Exception ignored) { }
+                    } catch (javax.net.ssl.SSLException error) {
+                        Diagnostics.record(this, "pairing", "tls_failed", error);
+                    } catch (java.net.SocketTimeoutException error) {
+                        Diagnostics.record(this, "pairing", "peer_timeout", error);
+                    } catch (Exception error) {
+                        Diagnostics.record(this, "pairing", "peer_request_failed", error);
+                    }
                 }
-                pairFailed(flow, "Не удалось связаться с ПК. Проверь локальную сеть и обнови QR-код.");
+                pairFailed(flow, "Не удалось связаться с ПК. В домашней сети проверь частный профиль Windows и подключение телефона к основной сети Wi-Fi. Затем обнови QR-код.");
             } catch (Exception ignored) { pairFailed(flow, "Не удалось создать защищённое подключение."); }
         });
     }

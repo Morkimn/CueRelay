@@ -479,7 +479,7 @@ internal sealed class Dashboard : W.Window
 
     private void Refresh()
     {
-        if (Environment.TickCount64 >= nextUpdateCheck) _ = CheckUpdates();
+        if (!Program.IsDevelopment && Environment.TickCount64 >= nextUpdateCheck) _ = CheckUpdates();
         var colors = Theme();
         if (colors != palette)
         {
@@ -897,6 +897,11 @@ internal sealed class Dashboard : W.Window
 
     private void ShowUpdates(C.StackPanel content)
     {
+        if (Program.IsDevelopment)
+        {
+            content.Children.Add(Text("Локальная сборка Dev", 15, palette.Text, true));
+            return;
+        }
         var summary = new C.StackPanel();
         var heading = new C.DockPanel();
         var version = new C.Border

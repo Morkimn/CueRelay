@@ -7,7 +7,7 @@ namespace PocketPlayer;
 internal static class Diagnostics
 {
     private static readonly object Gate = new();
-    private static readonly string Folder = Path.Combine(Path.GetTempPath(), "CueRelay", "logs");
+    private static readonly string Folder = Path.Combine(Path.GetTempPath(), Program.Title, "logs");
     private static readonly string Current = Path.Combine(Folder, "diagnostics.jsonl");
     private static readonly string Previous = Path.Combine(Folder, "diagnostics.previous.jsonl");
     private static bool initialized;

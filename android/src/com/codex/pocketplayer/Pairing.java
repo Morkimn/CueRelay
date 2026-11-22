@@ -43,13 +43,14 @@ final class Pairing {
         String code = uri.getQueryParameter("code");
         String peers = uri.getQueryParameter("ip");
         if (pin == null || !pin.matches("[0-9a-f]{64}") || code == null || !code.matches("[A-Za-z0-9_-]{32}")
-            || peers == null || !"43198".equals(uri.getQueryParameter("port"))) throw new IllegalArgumentException();
+            || peers == null || !Integer.toString(BuildProfile.PORT).equals(uri.getQueryParameter("port")))
+            throw new IllegalArgumentException();
         List<String> addresses = new ArrayList<>();
         for (String address : peers.split(",")) {
             if (addresses.size() < 8 && localAddress(address) && !addresses.contains(address)) addresses.add(address);
         }
         if (addresses.isEmpty()) throw new IllegalArgumentException();
-        return new Pairing(pin, addresses, 43198, code, "");
+        return new Pairing(pin, addresses, BuildProfile.PORT, code, "");
     }
 
     static boolean localAddress(String address) {

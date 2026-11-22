@@ -1,17 +1,24 @@
 param(
-    [Parameter(Mandatory)] [string] $InnoCompiler,
+    [string] $InnoCompiler,
     [Parameter(Mandatory)] [string] $OutputDirectory,
     [string] $DotnetExe = (Get-Command dotnet).Source,
-    [ValidateSet('x64','arm64')] [string] $Architecture = 'x64'
+    [ValidateSet('x64','arm64')] [string] $Architecture = 'x64',
+    [ValidateSet('Dev','Prod')] [string] $Mode = 'Dev'
 )
 
 $ErrorActionPreference = 'Stop'
-$compiler = (Resolve-Path -LiteralPath $InnoCompiler).Path
 $output = (Resolve-Path -LiteralPath $OutputDirectory).Path
 $project = Join-Path $PSScriptRoot 'windows\PocketPlayer.csproj'
+if ($Mode -eq 'Dev') {
+    & $DotnetExe publish $project -c Release -r "win-$Architecture" -p:CueRelayDevelopment=true -o (Join-Path $output "CueRelay-Dev-$Architecture")
+    if ($LASTEXITCODE -ne 0) { throw 'Dev build failed' }
+    return
+}
+if (!$InnoCompiler) { throw 'Prod requires -InnoCompiler' }
+$compiler = (Resolve-Path -LiteralPath $InnoCompiler).Path
 $publish = Join-Path $PSScriptRoot ".windows-publish-$Architecture"
 
-& $DotnetExe publish $project -c Release -r "win-$Architecture" -o $publish
+& $DotnetExe publish $project -c Release -r "win-$Architecture" -p:CueRelayDevelopment=false -o $publish
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 
 $assets = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'windows\obj\project.assets.json') -Raw | ConvertFrom-Json
