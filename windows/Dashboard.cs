@@ -569,11 +569,12 @@ internal sealed class Dashboard : W.Window
         {
             "ready" => "Запусти музыку или видео на телефоне",
             "permission" => "Разреши доступ к медиасессиям в настройках Android",
-            "off" => "Включи управление с ПК в CueRelay на телефоне",
+            "off" => "",
             "offline" => paired ? "Ждём связи с телефоном" : "Сначала привяжи телефон",
             _ => "Запусти музыку или видео на компьютере"
         } :
             string.IsNullOrWhiteSpace(current.Artist) ? current.App : $"{current.Artist}  ·  {current.App}";
+        details.Visibility = details.Text.Length == 0 ? W.Visibility.Collapsed : W.Visibility.Visible;
         previous.IsEnabled = current?.Previous == true;
         next.IsEnabled = current?.Next == true;
         toggle.IsEnabled = current?.Toggle == true;

@@ -47,6 +47,7 @@ import java.util.function.Consumer;
 
 public final class MainActivity extends Activity {
     private static final int SCAN = 10, CAMERA = 11, EXPORT_LOG = 13;
+    private static final int SHEET_SIDE_INSET = 18, SHEET_BOTTOM_INSET = 9;
     private static final int DOCK_HEIGHT = 64, DOCK_BOTTOM = 8;
     private static final int WIDGET_BUTTON_SIZE = 54, WIDGET_BUTTON_GAP = 24;
     private Float dockReleaseX;
@@ -857,7 +858,9 @@ public final class MainActivity extends Activity {
             installSize.bottomMargin = dp(6);
             body.addView(installUpdateButton, installSize);
             checkUpdateButton = button("Проверить обновления", false, this::checkUpdates);
-            body.addView(checkUpdateButton, full(46));
+            LinearLayout.LayoutParams checkSize = full(46);
+            checkSize.bottomMargin = dp(SHEET_SIDE_INSET - SHEET_BOTTOM_INSET);
+            body.addView(checkUpdateButton, checkSize);
             paintUpdatePanel();
         }, this::settings, true);
         updateSheet = sheet;
@@ -1280,7 +1283,7 @@ public final class MainActivity extends Activity {
 
     private FrameLayout sheetFrame(String title, Consumer<LinearLayout> body, Runnable closeAction, boolean back) {
         LinearLayout frame = column();
-        frame.setPadding(dp(18), dp(13), dp(18), dp(9));
+        frame.setPadding(dp(SHEET_SIDE_INSET), dp(13), dp(SHEET_SIDE_INSET), dp(SHEET_BOTTOM_INSET));
         frame.setBackground(shape(panel, 27));
         View handle = new View(this);
         handle.setBackground(shape(Appearance.mix(raised, dim, .35), 2));
