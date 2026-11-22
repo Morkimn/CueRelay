@@ -1151,38 +1151,93 @@ internal sealed class Dashboard : W.Window
     private void CustomColor(C.StackPanel content)
     {
         int seed = Palette.Seed(identity.Accent);
-        var sample = new C.Border { Height = 56, Background = Palette.Brush(seed), CornerRadius = new W.CornerRadius(18) };
-        content.Children.Add(sample);
-        var hex = new C.TextBox { Text = $"#{seed:X6}", MaxLength = 7, FontSize = 17,
-            Foreground = palette.Text, Background = palette.Raised, BorderThickness = new W.Thickness(0),
-            Padding = new W.Thickness(10, 7, 10, 7), Margin = new W.Thickness(0, 10, 0, 6), CaretBrush = palette.Text };
+        int selected = seed;
+        double hue = 0, saturation = 0, value = 0;
+        bool fromPicker = false;
+        var plane = new ColorField(false) { Height = 155, Focusable = true, Cursor = I.Cursors.Cross };
+        var strip = new ColorField(true) { Height = 28, Focusable = true, Cursor = I.Cursors.Hand,
+            Margin = new W.Thickness(0, 9, 0, 0) };
+        AutomationProperties.SetName(plane, "Насыщенность и яркость");
+        AutomationProperties.SetHelpText(plane, "Стрелки влево и вправо меняют насыщенность, вверх и вниз — яркость.");
+        AutomationProperties.SetName(strip, "Тон");
+        AutomationProperties.SetHelpText(strip, "Стрелки влево и вправо меняют тон.");
+        var picker = new C.StackPanel();
+        picker.Children.Add(plane);
+        picker.Children.Add(strip);
+        content.Children.Add(new C.Border { Child = picker, Background = palette.GroupInset,
+            CornerRadius = new W.CornerRadius(22), Padding = new W.Thickness(9) });
+
+        var sample = new C.Border { Width = 36, Height = 36, Background = Palette.Brush(seed),
+            CornerRadius = new W.CornerRadius(11), Margin = new W.Thickness(0, 0, 10, 0) };
+        var hex = new C.TextBox { Text = $"#{seed:X6}", MaxLength = 7, FontSize = 16,
+            Foreground = palette.Text, Background = M.Brushes.Transparent, BorderThickness = new W.Thickness(0),
+            VerticalContentAlignment = W.VerticalAlignment.Center, CaretBrush = palette.Text };
         AutomationProperties.SetName(hex, "Цвет HEX");
-        hex.TextChanged += (_, _) => { if (TryColor(hex.Text, out int color)) sample.Background = Palette.Brush(color); };
-        content.Children.Add(hex);
-        var names = new[] { "Красный", "Зелёный", "Синий" };
-        var sliders = new C.Slider[names.Length];
-        for (int i = 0; i < names.Length; ++i)
+        var hexRow = new C.DockPanel();
+        C.DockPanel.SetDock(sample, C.Dock.Left);
+        hexRow.Children.Add(sample);
+        var hexLabel = Text("HEX", 12, palette.Muted, true);
+        hexLabel.Margin = new W.Thickness(12, 0, 2, 0);
+        C.DockPanel.SetDock(hexLabel, C.Dock.Right);
+        hexRow.Children.Add(hexLabel);
+        hexRow.Children.Add(hex);
+        var input = new C.Border { Child = hexRow, Background = palette.Raised, CornerRadius = new W.CornerRadius(16),
+            Margin = new W.Thickness(0, 12, 0, 0), Padding = new W.Thickness(7) };
+        content.Children.Add(input);
+
+        void Apply()
         {
-            Section(content, names[i]);
-            var input = new C.Slider { Minimum = 0, Maximum = 255, Value = (seed >> ((2 - i) * 8)) & 255,
-                IsMoveToPointEnabled = true, Margin = new W.Thickness(3, 0, 3, 2) };
-            AutomationProperties.SetName(input, names[i]);
-            sliders[i] = input;
-            content.Children.Add(input);
-        }
-        foreach (var slider in sliders) slider.ValueChanged += (_, _) =>
-        {
-            int color = ((int)sliders[0].Value << 16) | ((int)sliders[1].Value << 8) | (int)sliders[2].Value;
-            hex.Text = $"#{color:X6}";
-        };
-        var apply = Button("Применить", () =>
-        {
-            if (!TryColor(hex.Text, out int rgb)) { hex.Focus(); return; }
             OpenPanel(Panel.Appearance, animate: false);
-            ChooseAppearance(() => identity.SetAccent($"#{rgb:X6}"));
-        }, true);
+            ChooseAppearance(() => identity.SetAccent($"#{selected:X6}"));
+        }
+        var apply = Button("Применить", Apply, primary: true);
+        apply.MinHeight = 44;
         apply.Margin = new W.Thickness(0, 10, 0, 0);
         content.Children.Add(apply);
+
+        void Paint()
+        {
+            sample.Background = Palette.Brush(selected);
+            plane.Show(hue, saturation, value);
+            strip.Show(hue, saturation, value);
+        }
+
+        void Pick()
+        {
+            var rgb = ColorField.Rgb(hue, saturation, value);
+            selected = rgb.R << 16 | rgb.G << 8 | rgb.B;
+            fromPicker = true;
+            hex.Text = $"#{selected:X6}";
+            fromPicker = false;
+            apply.IsEnabled = true;
+            Paint();
+        }
+
+        void ReadHex()
+        {
+            string raw = hex.Text.Trim();
+            apply.IsEnabled = TryColor(raw.StartsWith('#') ? raw : "#" + raw, out int rgb);
+            if (!apply.IsEnabled) return;
+            selected = rgb;
+            var color = Color.FromArgb(rgb | unchecked((int)0xff000000));
+            int max = Math.Max(color.R, Math.Max(color.G, color.B));
+            int min = Math.Min(color.R, Math.Min(color.G, color.B));
+            if (max != min) hue = color.GetHue() / 360d;
+            saturation = max == 0 ? 0 : (max - min) / (double)max;
+            value = max / 255d;
+            Paint();
+        }
+
+        plane.Picked += (s, v) => { (saturation, value) = (s, v); Pick(); };
+        strip.Picked += (h, _) => { hue = h; Pick(); };
+        hex.TextChanged += (_, _) => { if (!fromPicker) ReadHex(); };
+        hex.KeyDown += (_, args) =>
+        {
+            if (args.Key != I.Key.Enter || !apply.IsEnabled) return;
+            args.Handled = true;
+            Apply();
+        };
+        ReadHex();
     }
 
     private static bool TryColor(string value, out int rgb)
