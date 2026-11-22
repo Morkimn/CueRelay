@@ -60,6 +60,13 @@ internal sealed class Dashboard : W.Window
     private W.FrameworkElement artworkPlaceholder = null!;
     private C.Button previous = null!, toggle = null!, next = null!, device = null!;
     private C.Slider seek = null!;
+    private C.Slider volumeSlider = null!;
+    private C.TextBlock volumeValue = null!;
+    private C.DockPanel volumeRow = null!;
+    private C.Button dislike = null!, like = null!;
+    private readonly DispatcherTimer volumeCommit = new() { Interval = TimeSpan.FromMilliseconds(150) };
+    private bool syncingVolume;
+    private long volumeQuietUntil;
     private C.StackPanel timelinePanel = null!;
     private C.TextBlock elapsed = null!, duration = null!;
     private W.FrameworkElement playGlyph = null!;
@@ -85,6 +92,13 @@ internal sealed class Dashboard : W.Window
         this.media = media;
         this.phone = phone;
         usePhone = identity.StartWithPhone;
+        volumeCommit.Tick += async (_, _) =>
+        {
+            volumeCommit.Stop();
+            int level = (int)Math.Round(volumeSlider.Value * 100);
+            if (usePhone) phone.SendVolume(level);
+            else await media.SetVolume(level, static () => true, CancellationToken.None);
+        };
         Title = Program.Title;
         Width = 765;
         Height = 582;
@@ -272,6 +286,8 @@ internal sealed class Dashboard : W.Window
 
     private void Build()
     {
+        volumeCommit.Stop();
+        volumeQuietUntil = 0;
         root = new C.Grid { Background = palette.Background };
         Content = root;
         var body = new C.StackPanel { Margin = new W.Thickness(29, 22, 29, 22) };
@@ -333,10 +349,6 @@ internal sealed class Dashboard : W.Window
         playerDetails.Children.Add(BuildTimeline());
         var controls = new C.StackPanel { Orientation = C.Orientation.Horizontal, HorizontalAlignment = W.HorizontalAlignment.Center,
             Margin = new W.Thickness(0, 9, 0, 0) };
-        var sources = IconButton("Выбрать источник", SourcesGlyph, 44, 47, false, () => OpenPanel(Panel.Sources));
-        sources.Tag = new W.CornerRadius(19);
-        sources.Margin = new W.Thickness(0, 0, 7, 0);
-        controls.Children.Add(sources);
         previous = IconButton("Предыдущий трек", Previous, 46, 48, false, () => Command("previous"));
         previous.Tag = new W.CornerRadius(17);
         toggle = IconButton("Воспроизвести", Play, 70, 61, true, () => Command("toggle"));
@@ -347,11 +359,17 @@ internal sealed class Dashboard : W.Window
         toggle.Margin = new W.Thickness(8, 0, 8, 0);
         next = IconButton("Следующий трек", Next, 46, 48, false, () => Command("next"));
         next.Tag = new W.CornerRadius(17);
+        dislike = IconButton("Дизлайк", "ic_dislike", 40, 43, false, () => Command("dislike"));
+        like = IconButton("Лайк", "ic_like", 40, 43, false, () => Command("like"));
+        dislike.Margin = new W.Thickness(6, 0, 0, 0);
+        like.Margin = new W.Thickness(0, 0, 6, 0);
         controls.Children.Add(previous);
+        controls.Children.Add(dislike);
         controls.Children.Add(toggle);
+        controls.Children.Add(like);
         controls.Children.Add(next);
-        controls.Children.Add(new C.Border { Width = 51 });
         playerDetails.Children.Add(controls);
+        playerDetails.Children.Add(BuildVolume());
         playerRow.Children.Add(playerDetails);
         playerCard.Child = playerRow;
         body.Children.Add(playerCard);
@@ -365,6 +383,7 @@ internal sealed class Dashboard : W.Window
         revision = -1;
         artKey = null;
         ReadMedia(animate: false);
+        RefreshVolume();
         ReadDevice();
         ApplyTitleBar();
     }
@@ -510,6 +529,7 @@ internal sealed class Dashboard : W.Window
         }
         ReadMedia(animate: true);
         RefreshTimeline();
+        RefreshVolume();
     }
 
     private void ReadDevice()
@@ -538,6 +558,8 @@ internal sealed class Dashboard : W.Window
     private void SelectTarget(bool remote)
     {
         if (usePhone == remote) return;
+        volumeCommit.Stop();
+        volumeQuietUntil = 0;
         usePhone = remote;
         seeking = null;
         pendingPhonePlay = null;
@@ -546,6 +568,7 @@ internal sealed class Dashboard : W.Window
         artKey = "\0";
         PaintTarget();
         ReadMedia(animate: false);
+        RefreshVolume();
     }
 
     private void ReadMedia(bool animate)
@@ -565,16 +588,13 @@ internal sealed class Dashboard : W.Window
             else nextPlaying = pending.Playing;
         }
         song.Text = current is null ? "Сейчас ничего не играет" : string.IsNullOrWhiteSpace(current.Title) ? current.App : current.Title;
-        details.Text = current is null ? remote?.Status switch
-        {
-            "ready" => "Запусти музыку или видео на телефоне",
-            "permission" => "Разреши доступ к медиасессиям в настройках Android",
-            "off" => "",
-            "offline" => paired ? "Ждём связи с телефоном" : "Сначала привяжи телефон",
-            _ => "Запусти музыку или видео на компьютере"
-        } :
+        details.Text = current is null ? "" :
             string.IsNullOrWhiteSpace(current.Artist) ? current.App : $"{current.Artist}  ·  {current.App}";
         details.Visibility = details.Text.Length == 0 ? W.Visibility.Collapsed : W.Visibility.Visible;
+        bool canLike = ((current?.Rating ?? 0) & 1) != 0;
+        bool canDislike = ((current?.Rating ?? 0) & 2) != 0;
+        like.Visibility = canLike ? W.Visibility.Visible : W.Visibility.Collapsed;
+        dislike.Visibility = canDislike ? W.Visibility.Visible : canLike ? W.Visibility.Hidden : W.Visibility.Collapsed;
         previous.IsEnabled = current?.Previous == true;
         next.IsEnabled = current?.Next == true;
         toggle.IsEnabled = current?.Toggle == true;
@@ -589,6 +609,48 @@ internal sealed class Dashboard : W.Window
         }
         SetPlayIcon(nextPlaying, animate);
         RefreshTimeline();
+    }
+
+    private C.DockPanel BuildVolume()
+    {
+        volumeRow = new C.DockPanel { Margin = new W.Thickness(5, 6, 5, 0) };
+        volumeValue = Text("", 11, palette.Muted);
+        volumeValue.Margin = new W.Thickness(8, 0, 0, 0);
+        C.DockPanel.SetDock(volumeValue, C.Dock.Right);
+        volumeRow.Children.Add(volumeValue);
+        var textLabel = Text("Громкость", 12, palette.Muted);
+        textLabel.Margin = new W.Thickness(0, 0, 8, 0);
+        C.DockPanel.SetDock(textLabel, C.Dock.Left);
+        volumeRow.Children.Add(textLabel);
+        volumeSlider = new C.Slider { Minimum = 0, Maximum = 1, SmallChange = .02, LargeChange = .1,
+            IsMoveToPointEnabled = true, Template = seekTemplate, Foreground = palette.Accent, Background = palette.Raised };
+        AutomationProperties.SetName(volumeSlider, "Громкость");
+        volumeSlider.ValueChanged += (_, _) =>
+        {
+            volumeValue.Text = $"{Math.Round(volumeSlider.Value * 100)}%";
+            if (syncingVolume) return;
+            volumeQuietUntil = Environment.TickCount64 + 900;
+            volumeCommit.Stop();
+            volumeCommit.Start();
+        };
+        volumeRow.Children.Add(volumeSlider);
+        return volumeRow;
+    }
+
+    private void RefreshVolume()
+    {
+        int? level = usePhone ? phone.Current.Volume : media.Current.Volume;
+        volumeRow.Visibility = level.HasValue ? W.Visibility.Visible : W.Visibility.Collapsed;
+        if (!level.HasValue)
+        {
+            volumeCommit.Stop();
+            return;
+        }
+        if (volumeSlider.IsMouseCaptureWithin || Environment.TickCount64 < volumeQuietUntil) return;
+        syncingVolume = true;
+        volumeSlider.Value = level.Value / 100d;
+        volumeValue.Text = $"{level}%";
+        syncingVolume = false;
     }
 
     private void SetPlayIcon(bool nextPlaying, bool animate)
@@ -853,10 +915,17 @@ internal sealed class Dashboard : W.Window
         content.Children.Add(SettingsGroup(start));
         content.Children.Add(errorNote);
         Section(content, "Приложение");
-        content.Children.Add(SettingsGroup(SettingsRow("Обновления", $"Версия {ReleaseUpdates.CurrentVersion.ToString(3)}",
-            "ic_retry", "ic_right", () => OpenPanel(Panel.Update))));
-        content.Children.Add(SettingsGroup(SettingsRow("Диагностика", "Просмотреть или сохранить журнал",
-            "ic_source", "ic_right", () => OpenPanel(Panel.Diagnostics))));
+        var appRows = new C.StackPanel();
+        var updates = SettingsRow("Обновления", $"Версия {ReleaseUpdates.CurrentVersion.ToString(3)}",
+            "ic_retry", "ic_right", () => OpenPanel(Panel.Update));
+        updates.Tag = new W.CornerRadius(21, 21, 8, 8);
+        appRows.Children.Add(updates);
+        var diagnostics = SettingsRow("Диагностика", "Просмотреть или сохранить журнал",
+            "ic_source", "ic_right", () => OpenPanel(Panel.Diagnostics));
+        diagnostics.Tag = new W.CornerRadius(8, 8, 21, 21);
+        diagnostics.Margin = new W.Thickness(0, 2, 0, 0);
+        appRows.Children.Add(diagnostics);
+        content.Children.Add(SettingsGroup(appRows));
     }
 
     private void PaintUpdateNotice()
@@ -1259,10 +1328,39 @@ internal sealed class Dashboard : W.Window
             ClosePanel();
         }
         var selected = usePhone ? chosenPhoneSource : chosenSource;
-        content.Children.Add(Row("Автовыбор", usePhone ? "Активная сессия Android" : "Активная сессия Windows",
-            selected is null, () => Set(null)));
-        foreach (var source in usePhone ? phone.Current.Sources : media.Current.Sources)
-            content.Children.Add(Row(source.App, source.Title, selected == source.Id, () => Set(source.Id)));
+        var sources = usePhone ? phone.Current.Sources : media.Current.Sources;
+        bool automatic = selected is null || !sources.Any(source => source.Id == selected);
+        content.Children.Add(SettingsGroup(SettingsRow("Автовыбор", usePhone ? "Текущая сессия Android" : "Текущая сессия Windows",
+            "ic_auto", automatic ? "ic_check" : "ic_right", () => Set(null), automatic)));
+        var grid = new C.Primitives.UniformGrid { Columns = 2, Margin = new W.Thickness(-4, 10, -4, 0) };
+        foreach (var source in sources)
+        {
+            bool active = selected == source.Id;
+            var title = string.IsNullOrWhiteSpace(source.Title) ? source.App : source.Title;
+            var tile = Button(source.App, () => Set(source.Id));
+            tile.Tag = new W.CornerRadius(22);
+            tile.Margin = new W.Thickness(4, 0, 4, 8);
+            tile.Padding = new W.Thickness(13, 12, 13, 12);
+            tile.MinHeight = 110;
+            tile.HorizontalContentAlignment = W.HorizontalAlignment.Stretch;
+            tile.Background = active ? palette.DockSelection : palette.GroupInset;
+            AutomationProperties.SetItemStatus(tile, active ? "Выбрано" : "");
+            var labels = new C.StackPanel();
+            var icon = Glyph(active ? "ic_check" : "ic_note", active ? palette.Accent : palette.Muted, 20);
+            icon.HorizontalAlignment = W.HorizontalAlignment.Left;
+            icon.Margin = new W.Thickness(0, 0, 0, 8);
+            labels.Children.Add(icon);
+            var app = Text(source.App, 16, palette.Text, true);
+            app.TextTrimming = W.TextTrimming.CharacterEllipsis;
+            labels.Children.Add(app);
+            var track = Text(title, 13, palette.Muted);
+            track.TextTrimming = W.TextTrimming.CharacterEllipsis;
+            labels.Children.Add(track);
+            tile.Content = labels;
+            SpringPress(tile);
+            grid.Children.Add(tile);
+        }
+        content.Children.Add(grid);
     }
 
     private void ManageDevice(C.StackPanel content, bool focusUnpair)

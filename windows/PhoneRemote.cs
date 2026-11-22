@@ -61,10 +61,11 @@ internal sealed class PhoneRemote(Identity identity)
                             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), item.Playing && double.IsFinite(item.Rate)
                                 ? Math.Clamp(item.Rate, 0, 4) : 0, item.Seek, 0, item.Duration);
                     sources.Add(new(item.Id, Limit(item.App, 80), Limit(item.Title, 160), Limit(item.Artist, 120),
-                        item.Playing, item.Toggle, item.Previous, item.Next, imageKey, timeline));
+                        item.Playing, item.Toggle, item.Previous, item.Next, imageKey, timeline, item.Rating & 3));
                 }
             }
-            view = new(++revision, status, sources.ToArray(), images, report.PushOnly);
+            int? volume = status == "ready" && report.Volume is >= 0 and <= 100 ? report.Volume : null;
+            view = new(++revision, status, sources.ToArray(), images, report.PushOnly, volume);
             if (status != "ready") { commands.Clear(); WakeCommands(); }
             return report.PushOnly ? [] : TakeCommands();
         }
@@ -94,7 +95,8 @@ internal sealed class PhoneRemote(Identity identity)
     {
         var now = Environment.TickCount64;
         var ready = commands.Where(entry => entry.Expires >= now &&
-            view.Sources.Any(source => source.Id == entry.Command.Id)).Select(entry => entry.Command).ToArray();
+            (entry.Command.Action == "volume" ? view.Volume.HasValue : view.Sources.Any(source => source.Id == entry.Command.Id)))
+            .Select(entry => entry.Command).ToArray();
         commands.Clear();
         return ready;
     }
@@ -117,11 +119,31 @@ internal sealed class PhoneRemote(Identity identity)
                 "previous" => source?.Previous == true,
                 "next" => source?.Next == true,
                 "seek" => source?.Timeline is { CanSeek: true } time && positionMs >= 0 && positionMs <= time.DurationMs,
+                "like" => source is not null && (source.Rating & 1) != 0,
+                "dislike" => source is not null && (source.Rating & 2) != 0,
                 _ => false
             };
             if (!supported || source is null || commands.Count >= 8) return false;
             string verb = !view.FastCommands && action is ("play" or "pause") ? "toggle" : action;
             commands.Enqueue((new(id, verb, positionMs, source.Title), Environment.TickCount64 + 2400));
+            WakeCommands();
+            return true;
+        }
+    }
+
+    public bool SendVolume(int level)
+    {
+        lock (gate)
+        {
+            if (level is < 0 or > 100 || !Current.Volume.HasValue) return false;
+            int queued = commands.Count;
+            for (int i = 0; i < queued; i++)
+            {
+                var previous = commands.Dequeue();
+                if (previous.Command.Action != "volume") commands.Enqueue(previous);
+            }
+            if (commands.Count >= 8) return false;
+            commands.Enqueue((new("", "volume", level, ""), Environment.TickCount64 + 2400));
             WakeCommands();
             return true;
         }
@@ -142,9 +164,9 @@ internal sealed class PhoneRemote(Identity identity)
         string.IsNullOrEmpty(value) ? "" : value[..Math.Min(value.Length, length)];
 
     internal sealed record PhoneView(long Revision, string Status, Source[] Sources, IReadOnlyDictionary<string, byte[]> Covers,
-        bool FastCommands = false);
-    internal sealed record PhoneReport(string Device, string Status, PhoneTrack[]? Sources, bool PushOnly = false);
+        bool FastCommands = false, int? Volume = null);
+    internal sealed record PhoneReport(string Device, string Status, PhoneTrack[]? Sources, bool PushOnly = false, int? Volume = null);
     internal sealed record PhoneTrack(string Id, string App, string Title, string Artist, bool Playing, bool Toggle,
-        bool Previous, bool Next, bool Seek, long Duration, long Position, double Rate, string? Cover);
+        bool Previous, bool Next, bool Seek, long Duration, long Position, double Rate, string? Cover, int Rating = 0);
     internal sealed record PhoneCommand(string Id, string Action, long? PositionMs, string Title);
 }

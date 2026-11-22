@@ -15,8 +15,9 @@ final class Playback {
     final List<Source> sources;
     final Source selected;
     final Bitmap art;
+    final int volume;
 
-    Playback(long revision, String theme, String accent, String computer, String current, List<Source> sources, Source selected, Bitmap art) {
+    Playback(long revision, String theme, String accent, String computer, String current, List<Source> sources, Source selected, Bitmap art, int volume) {
         this.revision = revision;
         this.theme = theme;
         this.accent = accent;
@@ -25,6 +26,7 @@ final class Playback {
         this.sources = sources;
         this.selected = selected;
         this.art = art;
+        this.volume = volume;
     }
 
     static Playback parse(JSONObject data) throws Exception {
@@ -32,7 +34,7 @@ final class Playback {
         List<Source> sources = new ArrayList<>();
         for (int i = 0; i < items.length(); i++) sources.add(new Source(items.getJSONObject(i)));
         return new Playback(data.getLong("revision"), data.getString("theme"), data.optString("accent", "green"), data.getString("computer"),
-            data.optString("current"), sources, null, null);
+            data.optString("current"), sources, null, null, data.optInt("volume", -1));
     }
 
     Playback select(String id, Bitmap art) {
@@ -42,11 +44,11 @@ final class Playback {
             for (Source candidate : sources) if (candidate.id.equals(current)) { source = candidate; break; }
         }
         if (source == null && !sources.isEmpty()) source = sources.get(0);
-        return new Playback(revision, theme, accent, computer, current, sources, source, art);
+        return new Playback(revision, theme, accent, computer, current, sources, source, art, volume);
     }
 
     Playback withArtwork(Bitmap art) {
-        return new Playback(revision, theme, accent, computer, current, sources, selected, art);
+        return new Playback(revision, theme, accent, computer, current, sources, selected, art, volume);
     }
 
     String artworkKey() { return selected == null ? "" : selected.artwork; }

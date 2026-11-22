@@ -132,6 +132,9 @@ internal static class Program
         app.MapGet("/phone/commands", async (HttpContext context, CancellationToken stop) =>
             await phone.ReadCommands(Token(context), stop) is { } commands ? Results.Json(new { commands }) : Results.Unauthorized());
         app.MapGet("/ping", () => Results.NoContent());
+        app.MapPost("/volume", async (VolumeRequest request, HttpContext context, CancellationToken stop) =>
+            request.Level is >= 0 and <= 100 && await media.SetVolume(request.Level.Value, () => identity.Authenticate(Token(context)), stop)
+                ? Results.NoContent() : Results.BadRequest());
         app.MapGet("/state", async (long? revision, HttpContext context, CancellationToken stop) =>
         {
             var state = await media.Read(revision ?? 0, stop);
@@ -179,6 +182,7 @@ internal static class Program
     private sealed record PairRequest(string Code, string Id, string Device);
     private sealed record PairResult(string Id);
     private sealed record ThemeRequest(string Theme);
+    private sealed record VolumeRequest(int? Level);
     private sealed record AccentRequest(string Accent);
     private sealed record Command(string Id, string Action, long? PositionMs = null);
 }

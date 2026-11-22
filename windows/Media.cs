@@ -9,7 +9,7 @@ using Windows.Storage.Streams;
 namespace PocketPlayer;
 
 internal sealed record Source(string Id, string App, string Title, string Artist, bool Playing,
-    bool Toggle, bool Previous, bool Next, string Art, TrackTimeline? Timeline);
+    bool Toggle, bool Previous, bool Next, string Art, TrackTimeline? Timeline, int Rating = 0);
 
 internal sealed record TrackTimeline(long DurationMs, long PositionMs, long UpdatedAtMs, double Rate,
     bool CanSeek, long MinSeekMs, long MaxSeekMs)
@@ -19,7 +19,8 @@ internal sealed record TrackTimeline(long DurationMs, long PositionMs, long Upda
         0, DurationMs);
 }
 
-internal sealed record Snapshot(long Revision, string Computer, string Theme, string Accent, string Current, Source[] Sources);
+internal sealed record Snapshot(long Revision, string Computer, string Theme, string Accent, string Current, Source[] Sources,
+    int? Volume = null);
 
 internal sealed class Media : IDisposable
 {
@@ -107,6 +108,23 @@ internal sealed class Media : IDisposable
 
     public Snapshot Current { get { lock (stateGate) return state; } }
 
+    public Task<bool> SetVolume(int level, Func<bool> allowed, CancellationToken stop) =>
+        dispatcher.InvokeAsync(() =>
+        {
+            if (!allowed() || !EndpointVolume.Set(level)) return false;
+            RefreshVolume();
+            return true;
+        }, DispatcherPriority.Normal, stop).Task;
+
+    private void RefreshVolume()
+    {
+        var volume = EndpointVolume.Read();
+        lock (stateGate)
+        {
+            if (volume != state.Volume) Advance(state.Current, state.Sources, state.Theme, state.Accent, volume);
+        }
+    }
+
     public void RefreshAppearance()
     {
         lock (stateGate)
@@ -114,7 +132,7 @@ internal sealed class Media : IDisposable
             var theme = identity.Theme;
             var accent = identity.Accent;
             if (state.Theme == theme && state.Accent == accent) return;
-            Advance(state.Current, state.Sources, theme, accent);
+            Advance(state.Current, state.Sources, theme, accent, state.Volume);
         }
     }
 
@@ -194,20 +212,23 @@ internal sealed class Media : IDisposable
 
     private void Publish(string current, Source[] sources)
     {
+        var volume = EndpointVolume.Read();
         lock (stateGate)
         {
             var theme = identity.Theme;
             var accent = identity.Accent;
-            if (current == state.Current && theme == state.Theme && accent == state.Accent && sources.SequenceEqual(state.Sources)) return;
-            artwork = players.Values.Where(player => player.Art.Length != 0 && player.Bytes is not null)
-                .GroupBy(player => player.Art).ToDictionary(group => group.Key, group => group.First().Bytes!);
-            Advance(current, sources, theme, accent);
+            bool sourcesChanged = !sources.SequenceEqual(state.Sources);
+            if (current == state.Current && theme == state.Theme && accent == state.Accent && volume == state.Volume && !sourcesChanged) return;
+            if (sourcesChanged)
+                artwork = players.Values.Where(player => player.Art.Length != 0 && player.Bytes is not null)
+                    .GroupBy(player => player.Art).ToDictionary(group => group.Key, group => group.First().Bytes!);
+            Advance(current, sources, theme, accent, volume);
         }
     }
 
-    private void Advance(string current, Source[] sources, string theme, string accent)
+    private void Advance(string current, Source[] sources, string theme, string accent, int? volume)
     {
-        state = new(++nextRevision, Environment.MachineName, theme, accent, current, sources);
+        state = new(++nextRevision, Environment.MachineName, theme, accent, current, sources, volume);
         var previous = changed;
         changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         previous.TrySetResult();

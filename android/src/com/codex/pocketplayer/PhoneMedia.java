@@ -154,6 +154,7 @@ public final class PhoneMedia extends NotificationListenerService {
                     .put("next", has(actions, PlaybackState.ACTION_SKIP_TO_NEXT))
                     .put("seek", duration > 0 && has(actions, PlaybackState.ACTION_SEEK_TO))
                     .put("duration", Math.max(0, duration)).put("position", Math.max(0, position)).put("rate", rate);
+                source.put("rating", rating(item, actions));
                 if (includeCovers) source.put("cover", cover(token, title, info));
                 sources.put(source);
                 sent.put(id, item);
@@ -168,6 +169,12 @@ public final class PhoneMedia extends NotificationListenerService {
                     coverChanged.remove(listener.getKey());
                     listeners.remove();
                 }
+            }
+            android.media.AudioManager audio = context.getSystemService(android.media.AudioManager.class);
+            if (audio != null && !audio.isVolumeFixed()) {
+                int stream = android.media.AudioManager.STREAM_MUSIC;
+                int maximum = audio.getStreamMaxVolume(stream);
+                if (maximum > 0) result.put("volume", Math.round(100f * audio.getStreamVolume(stream) / maximum));
             }
             return result.put("status", "ready");
         }
@@ -205,12 +212,31 @@ public final class PhoneMedia extends NotificationListenerService {
             Set<String> blocked = Pairing.prefs(context).getStringSet(BLOCKED, Collections.emptySet());
             for (int i = 0; i < Math.min(commands.length(), 8); i++) {
                 JSONObject command = commands.optJSONObject(i);
-                MediaController controller = command == null ? null : sent.get(command.optString("id"));
+                if (command == null) continue;
+                if ("volume".equals(command.optString("action"))) {
+                    try { setVolume(command.optInt("positionMs", -1)); }
+                    catch (RuntimeException ignored) { }
+                    continue;
+                }
+                MediaController controller = sent.get(command.optString("id"));
                 if (controller == null || blocked.contains(controller.getPackageName())) continue;
                 try { dispatch(controller, command); }
                 catch (RuntimeException ignored) { }
             }
             return true;
+        }
+
+        private void setVolume(int level) {
+            android.media.AudioManager audio = context.getSystemService(android.media.AudioManager.class);
+            if (level < 0 || level > 100 || audio == null || audio.isVolumeFixed()) return;
+            int stream = android.media.AudioManager.STREAM_MUSIC;
+            audio.setStreamVolume(stream, Math.round(level * audio.getStreamMaxVolume(stream) / 100f), 0);
+        }
+
+        private static int rating(MediaController controller, long actions) {
+            if (!has(actions, PlaybackState.ACTION_SET_RATING)) return 0;
+            if (controller.getRatingType() == android.media.Rating.RATING_THUMB_UP_DOWN) return 3;
+            return controller.getRatingType() == android.media.Rating.RATING_HEART ? 1 : 0;
         }
 
         private void dispatch(MediaController controller, JSONObject command) {
@@ -219,6 +245,14 @@ public final class PhoneMedia extends NotificationListenerService {
             long actions = state.getActions();
             MediaController.TransportControls controls = controller.getTransportControls();
             switch (command.optString("action")) {
+                case "like":
+                case "dislike":
+                    boolean like = "like".equals(command.optString("action"));
+                    int supported = rating(controller, actions);
+                    if ((supported & (like ? 1 : 2)) == 0 ||
+                        !title(controller.getMetadata()).equals(command.optString("title"))) break;
+                    controls.setRating(supported == 3 ? android.media.Rating.newThumbRating(like) : android.media.Rating.newHeartRating(true));
+                    break;
                 case "play":
                     if (has(actions, PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PLAY_PAUSE)) controls.play();
                     break;

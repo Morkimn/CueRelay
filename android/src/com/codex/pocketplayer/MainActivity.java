@@ -79,7 +79,11 @@ public final class MainActivity extends Activity {
     private String sourceSignature;
     private ImageView previous, next, artwork;
     private ViewFlipper toggle;
-    private SeekBar seek;
+    private SeekBar seek, volume;
+    private LinearLayout volumeRow;
+    private TextView volumePercent;
+    private boolean adjustingVolume;
+    private long volumeQuietUntil;
     private LinearLayout timelinePanel;
     private TextView elapsed, duration;
     private Playback.Source seeking;
@@ -95,6 +99,11 @@ public final class MainActivity extends Activity {
     private PairFlow activePair;
     private Dialog pairDialog;
     private Point tapOrigin, appearanceOrigin;
+    private final Runnable sendVolume = () -> {
+        Playback state = PhoneLink.playback;
+        if (state != null && state.volume >= 0)
+            PhoneLink.start(this, "volume", Integer.toString(volume.getProgress()));
+    };
     private final Runnable ticker = new Runnable() {
         @Override public void run() { refresh(); ui.postDelayed(this, 130); }
     };
@@ -118,7 +127,12 @@ public final class MainActivity extends Activity {
         ui.post(ticker);
     }
 
-    @Override public void onPause() { ui.removeCallbacks(ticker); super.onPause(); }
+    @Override public void onPause() {
+        ui.removeCallbacks(ticker);
+        ui.removeCallbacks(sendVolume);
+        adjustingVolume = false;
+        super.onPause();
+    }
     @Override public void onDestroy() {
         if (sheet != null) sheet.dismiss();
         if (pairDialog != null) pairDialog.dismiss();
@@ -151,6 +165,7 @@ public final class MainActivity extends Activity {
         else if (paired && page == Page.PLAYER) {
             if (state == null) connectionStatus(null);
             refreshTimeline(state == null ? null : state.selected);
+            refreshVolume(state);
         }
     }
 
@@ -168,6 +183,8 @@ public final class MainActivity extends Activity {
     }
 
     private void render(Point origin) {
+        ui.removeCallbacks(sendVolume);
+        volumeQuietUntil = 0;
         dark = Appearance.dark(this);
         renderedTheme = Appearance.theme(this);
         renderedAccent = Appearance.accentKey(this);
@@ -498,15 +515,10 @@ public final class MainActivity extends Activity {
 
         LinearLayout controls = row();
         controls.setGravity(Gravity.CENTER);
-        ImageView source = icon(R.drawable.ic_source, "Выбрать источник", text, 11);
-        source.setBackground(ripple(raised, 19));
-        source.setOnClickListener(v -> sources());
-        controls.addView(source, new LinearLayout.LayoutParams(dp(44), dp(47)));
         previous = icon(R.drawable.ic_previous, "Предыдущий трек", text, 13);
         previous.setBackground(ripple(raised, 17));
         previous.setOnClickListener(v -> action("previous"));
         LinearLayout.LayoutParams previousSize = new LinearLayout.LayoutParams(dp(46), dp(48));
-        previousSize.setMarginStart(dp(6));
         controls.addView(previous, previousSize);
         toggle = (ViewFlipper) getLayoutInflater().inflate(R.layout.widget_toggle, controls, false);
         GradientDrawable playShape = shape(accent, 26);
@@ -525,11 +537,48 @@ public final class MainActivity extends Activity {
         next = icon(R.drawable.ic_next, "Следующий трек", text, 13);
         next.setBackground(ripple(raised, 17));
         next.setOnClickListener(v -> action("next"));
-        LinearLayout.LayoutParams nextSize = new LinearLayout.LayoutParams(dp(46), dp(48));
-        nextSize.setMarginEnd(dp(6));
-        controls.addView(next, nextSize);
-        controls.addView(new View(this), new LinearLayout.LayoutParams(dp(44), dp(47)));
+        controls.addView(next, new LinearLayout.LayoutParams(dp(46), dp(48)));
         card.addView(controls);
+        addVolume(card);
+    }
+
+    private void addVolume(LinearLayout card) {
+        adjustingVolume = false;
+        volumeRow = row();
+        volumeRow.setGravity(Gravity.CENTER_VERTICAL);
+        volumeRow.setVisibility(View.GONE);
+        volumeRow.addView(label("Громкость", 12, dim, false));
+        volume = new SeekBar(this);
+        volume.setMax(100);
+        volume.setContentDescription("Громкость компьютера");
+        volume.setProgressTintList(ColorStateList.valueOf(accent));
+        volume.setProgressBackgroundTintList(ColorStateList.valueOf(raised));
+        volume.setThumbTintList(ColorStateList.valueOf(accent));
+        volumeRow.addView(volume, new LinearLayout.LayoutParams(0, dp(48), 1));
+        volumePercent = label("", 12, dim, false);
+        volumePercent.setGravity(Gravity.END);
+        volumeRow.addView(volumePercent, new LinearLayout.LayoutParams(dp(34), -2));
+        card.addView(volumeRow, new LinearLayout.LayoutParams(-1, -2));
+        volume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onStartTrackingTouch(SeekBar bar) { adjustingVolume = true; }
+            @Override public void onStopTrackingTouch(SeekBar bar) { adjustingVolume = false; }
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                volumePercent.setText(progress + "%");
+                if (!fromUser) return;
+                volumeQuietUntil = android.os.SystemClock.elapsedRealtime() + 1200;
+                ui.removeCallbacks(sendVolume);
+                ui.postDelayed(sendVolume, 150);
+            }
+        });
+    }
+
+    private void refreshVolume(Playback state) {
+        int level = state == null ? -1 : state.volume;
+        volumeRow.setVisibility(level < 0 ? View.GONE : View.VISIBLE);
+        if (level >= 0 && !adjustingVolume && android.os.SystemClock.elapsedRealtime() >= volumeQuietUntil) {
+            volume.setProgress(level);
+            volumePercent.setText(level + "%");
+        }
     }
 
     private void addTimeline(LinearLayout card) {
@@ -608,6 +657,7 @@ public final class MainActivity extends Activity {
         if (page != Page.PLAYER) return;
         Playback.Source active = value == null ? null : value.selected;
         refreshTimeline(active);
+        refreshVolume(value);
         boolean playing = active != null && active.playing;
         title.setText(value == null ? "ПК недоступен" : active == null ? "Нет воспроизведения" : active.displayTitle());
         sourceLabel.setText(active == null ? "" :
@@ -1182,43 +1232,39 @@ public final class MainActivity extends Activity {
     private void customColor() {
         panel("Свой цвет", list -> {
             int initial = Appearance.seed(renderedAccent);
-            View swatch = new View(this);
-            swatch.setBackground(shape(initial, 21));
-            list.addView(swatch, full(58));
-            gap(list, 10);
-            EditText hex = inputField("#4A9A65");
-            hex.setText(hex(initial));
-            hex.setFilters(new android.text.InputFilter[]{ new android.text.InputFilter.LengthFilter(7) });
-            list.addView(hex, full(47));
             float[] hsv = new float[3];
             Color.colorToHSV(initial, hsv);
-            for (int i = 0; i < hsv.length; i++) {
-                final int component = i;
-                String[] labels = {"Тон", "Насыщенность", "Яркость"};
-                list.addView(label(labels[i], 13, dim, true));
-                SeekBar slider = new SeekBar(this);
-                slider.setContentDescription(labels[i]);
-                slider.setMax(i == 0 ? 359 : 100);
-                slider.setProgress(Math.round(i == 0 ? hsv[i] : hsv[i] * 100));
-                slider.setProgressTintList(ColorStateList.valueOf(accent));
-                slider.setThumbTintList(ColorStateList.valueOf(accent));
-                slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                    @Override public void onStartTrackingTouch(SeekBar bar) { }
-                    @Override public void onStopTrackingTouch(SeekBar bar) { }
-                    @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
-                        if (!fromUser) return;
-                        hsv[component] = component == 0 ? value : value / 100f;
-                        int chosen = Color.HSVToColor(hsv);
-                        hex.setText(hex(chosen));
-                        swatch.setBackground(shape(chosen, 21));
-                    }
-                });
-                list.addView(slider, full(42));
-            }
+            LinearLayout picker = column();
+            picker.setPadding(dp(9), dp(9), dp(9), dp(9));
+            picker.setBackground(shape(Appearance.mix(panel, raised, .36), 22));
+            ColorField plane = new ColorField(this, false);
+            ColorField strip = new ColorField(this, true);
+            picker.addView(plane, full(155));
+            gap(picker, 9);
+            picker.addView(strip, full(28));
+            list.addView(picker, new LinearLayout.LayoutParams(-1, -2));
+            gap(list, 12);
+            LinearLayout field = row();
+            field.setPadding(dp(7), dp(7), dp(10), dp(7));
+            field.setBackground(shape(raised, 16));
+            View swatch = new View(this);
+            LinearLayout.LayoutParams swatchSize = new LinearLayout.LayoutParams(dp(36), dp(36));
+            swatchSize.setMarginEnd(dp(10));
+            field.addView(swatch, swatchSize);
+            EditText hex = inputField("#4A9A65");
+            hex.setBackground(null);
+            hex.setPadding(0, 0, dp(7), 0);
+            hex.setText(hex(initial));
+            hex.setContentDescription("Цвет HEX");
+            hex.setFilters(new android.text.InputFilter[]{ new android.text.InputFilter.LengthFilter(7) });
+            field.addView(hex, new LinearLayout.LayoutParams(0, dp(36), 1));
+            field.addView(label("HEX", 12, dim, true));
+            list.addView(field, new LinearLayout.LayoutParams(-1, -2));
+            gap(list, 10);
             Button apply = button("Применить", true, () -> { });
             apply.setOnClickListener(view -> {
-                String key = hex.getText().toString().trim().toUpperCase(java.util.Locale.ROOT);
-                if (!key.matches("#[0-9A-F]{6}")) { hex.setError("Введи цвет в формате #RRGGBB"); return; }
+                String key = normalizedHex(hex.getText());
+                if (!key.matches("#[0-9A-F]{6}")) return;
                 if (paired && PhoneLink.playback == null) {
                     showError("Подключись к компьютеру, чтобы синхронизировать цвет.");
                     return;
@@ -1227,7 +1273,43 @@ public final class MainActivity extends Activity {
                 appearanceSettings();
             });
             list.addView(apply, full(47));
+            java.util.function.IntConsumer paint = color -> {
+                swatch.setBackground(shape(color, 11));
+                plane.show(hsv);
+                strip.show(hsv);
+                enabled(apply, true);
+            };
+            boolean[] picking = {false};
+            Runnable picked = () -> {
+                int color = Color.HSVToColor(hsv);
+                picking[0] = true;
+                hex.setText(hex(color));
+                picking[0] = false;
+                paint.accept(color);
+            };
+            plane.listener = (s, v) -> { hsv[1] = s; hsv[2] = v; picked.run(); };
+            strip.listener = (h, ignored) -> { hsv[0] = Math.min(359.99f, h * 360); picked.run(); };
+            hex.addTextChangedListener(new android.text.TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence value, int start, int count, int after) { }
+                @Override public void onTextChanged(CharSequence value, int start, int before, int count) {
+                    if (picking[0]) return;
+                    String normalized = normalizedHex(value);
+                    if (!normalized.matches("#[0-9A-F]{6}")) { enabled(apply, false); return; }
+                    int color = Color.parseColor(normalized);
+                    float previousHue = hsv[0];
+                    Color.colorToHSV(color, hsv);
+                    if (hsv[1] == 0) hsv[0] = previousHue;
+                    paint.accept(color);
+                }
+                @Override public void afterTextChanged(android.text.Editable value) { }
+            });
+            paint.accept(initial);
         }, this::appearanceSettings, true);
+    }
+
+    private static String normalizedHex(CharSequence value) {
+        String text = value.toString().trim().toUpperCase(java.util.Locale.ROOT);
+        return text.startsWith("#") ? text : "#" + text;
     }
 
     private static String hex(int color) {

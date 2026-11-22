@@ -353,6 +353,10 @@ public final class PhoneLink extends Service {
                 client.json(address, "/theme", new JSONObject().put("theme", argument), true, 4000);
             } else if ("accent".equals(action)) {
                 client.json(address, "/accent", new JSONObject().put("accent", argument), true, 4000);
+            } else if ("volume".equals(action)) {
+                if (argument == null || !argument.matches("[0-9]{1,3}")) return;
+                int level = Integer.parseInt(argument);
+                if (level <= 100) client.json(address, "/volume", new JSONObject().put("level", level), true, 4000);
             } else if ("seek".equals(action)) {
                 if (argument == null || !argument.matches("[0-9a-f]{32}:[0-9]{1,14}")) return;
                 int split = argument.indexOf(':');
