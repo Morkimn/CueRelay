@@ -11,7 +11,7 @@
 [Setup]
 AppId={{16409B66-9E99-4705-9028-B5763469B80B}
 AppName=CueRelay
-AppVersion=0.7.5
+AppVersion=0.7.6
 DefaultDirName={autopf}\CueRelay
 DefaultGroupName=CueRelay
 UsePreviousGroup=no
