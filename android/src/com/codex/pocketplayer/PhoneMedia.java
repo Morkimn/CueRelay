@@ -3,13 +3,20 @@ package com.codex.pocketplayer;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.content.pm.ProviderInfo;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
+import android.media.MediaDescription;
 import android.media.MediaMetadata;
 import android.media.Rating;
 import android.media.session.MediaController;
 import android.media.session.MediaSession;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.SystemClock;
@@ -19,6 +26,8 @@ import android.util.Base64;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -161,7 +170,7 @@ public final class PhoneMedia extends NotificationListenerService {
                     .put("duration", Math.max(0, duration)).put("position", Math.max(0, position)).put("rate", rate);
                 RatingActions ratings = ratingActions(item, state);
                 source.put("rating", ratings.supported).put("ratingSelected", ratings.selected);
-                if (includeCovers) source.put("cover", cover(token, title, info));
+                if (includeCovers) source.put("cover", cover(token, item.getPackageName(), title, info));
                 sources.put(source);
                 sent.put(id, item);
             }
@@ -239,7 +248,7 @@ public final class PhoneMedia extends NotificationListenerService {
             audio.setStreamVolume(stream, Math.round(level * audio.getStreamMaxVolume(stream) / 100f), 0);
         }
 
-        private static RatingActions ratingActions(MediaController controller, PlaybackState state) {
+        private RatingActions ratingActions(MediaController controller, PlaybackState state) {
             RatingActions result = new RatingActions();
             if (state == null) return result;
             if (has(state.getActions(), PlaybackState.ACTION_SET_RATING)) {
@@ -260,6 +269,7 @@ public final class PhoneMedia extends NotificationListenerService {
                     if ("LikeRatingAction".contentEquals(action.getName())) {
                         result.like = action;
                         result.supported |= 1;
+                        if (soundCloudLiked(owner, action.getIcon())) result.selected |= 1;
                         break;
                     }
                 }
@@ -279,6 +289,16 @@ public final class PhoneMedia extends NotificationListenerService {
                 }
             }
             return result;
+        }
+
+        private boolean soundCloudLiked(String owner, int icon) {
+            try {
+                Resources resources = context.getPackageManager().getResourcesForApplication(owner);
+                String name = resources.getResourceEntryName(icon);
+                return name.equals("ic_actions_heart_active") || name.startsWith("ic_actions_heart_active_");
+            } catch (PackageManager.NameNotFoundException | Resources.NotFoundException ignored) {
+                return false;
+            }
         }
 
         private static final class RatingActions {
@@ -333,12 +353,13 @@ public final class PhoneMedia extends NotificationListenerService {
             }
         }
 
-        private String cover(MediaSession.Token token, String title, MediaMetadata metadata) {
+        private String cover(MediaSession.Token token, String owner, String title, MediaMetadata metadata) {
             long now = SystemClock.elapsedRealtime();
             Cover previous = covers.get(token);
             if (!coverChanged.remove(token) && previous != null && title.equals(previous.title) && now - previous.checked < 3000)
                 return previous.data;
-            Bitmap bitmap = metadata == null ? null : metadata.getDescription().getIconBitmap();
+            Bitmap bitmap = artwork(owner, metadata);
+            if (bitmap == null) bitmap = appIcon(owner);
             String encoded = "";
             if (bitmap != null) {
                 float ratio = 128f / Math.max(bitmap.getWidth(), bitmap.getHeight());
@@ -350,6 +371,44 @@ public final class PhoneMedia extends NotificationListenerService {
             }
             covers.put(token, new Cover(title, now, encoded));
             return encoded;
+        }
+
+        private Bitmap artwork(String owner, MediaMetadata metadata) {
+            if (metadata == null) return null;
+            MediaDescription description = metadata.getDescription();
+            Bitmap bitmap = description.getIconBitmap();
+            if (bitmap != null) return bitmap;
+            Uri uri = description.getIconUri();
+            if (uri == null || !"content".equals(uri.getScheme())) return null;
+            ProviderInfo provider = context.getPackageManager().resolveContentProvider(uri.getAuthority(), 0);
+            if (provider == null || !owner.equals(provider.packageName)) return null;
+
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inJustDecodeBounds = true;
+            try (InputStream stream = context.getContentResolver().openInputStream(uri)) {
+                if (stream == null) return null;
+                BitmapFactory.decodeStream(stream, null, options);
+            } catch (IOException | RuntimeException ignored) { return null; }
+            if (options.outWidth <= 0 || options.outHeight <= 0) return null;
+            options.inSampleSize = 1;
+            int dimension = Math.max(options.outWidth, options.outHeight);
+            while (dimension / options.inSampleSize > 256) options.inSampleSize *= 2;
+            options.inJustDecodeBounds = false;
+            try (InputStream stream = context.getContentResolver().openInputStream(uri)) {
+                return stream == null ? null : BitmapFactory.decodeStream(stream, null, options);
+            } catch (IOException | RuntimeException ignored) { return null; }
+        }
+
+        private Bitmap appIcon(String owner) {
+            try {
+                Drawable drawable = context.getPackageManager().getApplicationIcon(owner);
+                Bitmap bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888);
+                drawable.setBounds(0, 0, bitmap.getWidth(), bitmap.getHeight());
+                drawable.draw(new Canvas(bitmap));
+                return bitmap;
+            } catch (PackageManager.NameNotFoundException | RuntimeException ignored) {
+                return null;
+            }
         }
     }
 
