@@ -11,7 +11,7 @@
 [Setup]
 AppId={{16409B66-9E99-4705-9028-B5763469B80B}
 AppName=CueRelay
-AppVersion=0.7.4
+AppVersion=0.7.5
 DefaultDirName={autopf}\CueRelay
 DefaultGroupName=CueRelay
 UsePreviousGroup=no
@@ -70,6 +70,8 @@ Type: dirifempty; Name: "{localappdata}\CodexPocketPlayer"
 [Code]
 const
   FirewallRuleName = 'Pocket Player 43198 (Codex)';
+  FirewallPrivateProfile = 2;
+  FirewallPublicProfile = 4;
   PlayerMutex = 'Local\CodexPocketPlayer-run';
   StopEventName = 'Local\CodexPocketPlayer-stop';
   AutoStartSettings = 'Software\CodexPocketPlayer';
@@ -151,7 +153,7 @@ begin
     Rule.Protocol := 6;
     Rule.LocalPorts := '43198';
     Rule.RemoteAddresses := 'LocalSubnet';
-    Rule.Profiles := 2;
+    Rule.Profiles := FirewallPrivateProfile or FirewallPublicProfile;
     Rule.Direction := 1;
     Rule.Action := 1;
     Rule.EdgeTraversal := False;
