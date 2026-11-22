@@ -376,20 +376,21 @@ internal sealed class Dashboard : W.Window
         playbackRow.ColumnDefinitions.Add(new C.ColumnDefinition { Width = W.GridLength.Auto });
         playbackRow.ColumnDefinitions.Add(new C.ColumnDefinition { MinWidth = 42 });
         var controls = new C.StackPanel { Orientation = C.Orientation.Horizontal };
-        previous = IconButton("Предыдущий трек", Previous, 46, 46, false, () => Command("previous"));
+        const int trackSize = 46, ratingSize = 42;
+        previous = IconButton("Предыдущий трек", Previous, trackSize, trackSize, false, () => Command("previous"));
         toggle = IconButton("Воспроизвести", Play, 70, 61, true, () => Command("toggle"));
         toggle.Tag = new W.CornerRadius(27, 20, 26, 20);
         SpringPress(toggle);
         playGlyph = (W.FrameworkElement)toggle.Content;
         playGlyph.RenderTransformOrigin = new W.Point(.5, .5);
         toggle.Margin = new W.Thickness(8, 0, 8, 0);
-        next = IconButton("Следующий трек", Next, 46, 46, false, () => Command("next"));
-        dislike = IconButton("Дизлайк", "ic_dislike", 46, 46, false, () => Command("dislike"));
-        like = IconButton("Лайк", "ic_like", 46, 46, false, () => Command("like"));
+        next = IconButton("Следующий трек", Next, trackSize, trackSize, false, () => Command("next"));
+        dislike = IconButton("Дизлайк", "ic_dislike", ratingSize, ratingSize, false, () => Command("dislike"));
+        like = IconButton("Лайк", "ic_like", ratingSize, ratingSize, false, () => Command("like"));
         dislike.Margin = new W.Thickness(0, 0, 6, 0);
         like.Margin = new W.Thickness(6, 0, 0, 0);
-        C.Button[] squareButtons = [dislike, previous, next, like];
-        foreach (var button in squareButtons)
+        var squareButtons = new[] { (previous, trackSize), (next, trackSize), (dislike, ratingSize), (like, ratingSize) };
+        foreach (var (button, _) in squareButtons)
         {
             button.Tag = new W.CornerRadius(17);
             button.Padding = new W.Thickness(0);
@@ -402,8 +403,8 @@ internal sealed class Dashboard : W.Window
         playbackRow.SizeChanged += (_, args) =>
         {
             // Keep space for the separate volume button when both rating buttons are visible.
-            double size = args.NewSize.Width < 324 ? 42 : 46;
-            foreach (var button in squareButtons) button.Width = button.Height = size;
+            int reduction = args.NewSize.Width < 324 ? 4 : 0;
+            foreach (var (button, size) in squareButtons) button.Width = button.Height = size - reduction;
         };
         C.Grid.SetColumn(controls, 1);
         playbackRow.Children.Add(controls);
