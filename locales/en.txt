@@ -215,3 +215,18 @@ Windows не смогла сохранить привязку. Проверь д
 Предыдущий источник|Previous source
 Следующий источник|Next source
 Закрыть список|Close list
+Интерфейс|Interface
+Тема, цвет и обложки|Theme, accent color and artwork
+Упростить анимации|Reduce motion
+Убирает переходы и эффекты движения.|Turns off animated transitions and motion effects.
+Синхронизация темы|Theme sync
+Применяет тему и акцент на ПК и телефоне.|Shares the theme and accent color between PC and phone.
+Управление|Controls
+Экономия памяти в трее|Save memory in the system tray
+Освобождает окно при закрытии. Связь продолжает работать.|Unloads the window when closed and keeps the connection running.
+Телевизор|TV
+Пульт Android TV|Android TV remote
+Через приложение Google TV · без ПК|Via the Google TV app · no PC needed
+Подключи телефон и телевизор к одной сети. В Google TV открой пульт, выбери телевизор и введи код с его экрана.|Connect your phone and TV to the same network. Open the remote in Google TV, select your TV and enter the code shown on its screen.
+Открыть Google TV|Open Google TV
+Открой Google TV на телефоне, чтобы подключить пульт.|Open Google TV on your phone to pair the remote.

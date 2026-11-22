@@ -503,7 +503,7 @@ internal sealed class Dashboard : W.Window
 
     private void PaintDock()
     {
-        var active = panel is Panel.Appearance or Panel.Color or Panel.Update or Panel.Diagnostics ? Panel.Settings : panel;
+        var active = panel is Panel.Appearance or Panel.Language or Panel.Color or Panel.Update or Panel.Diagnostics ? Panel.Settings : panel;
         foreach (var (destination, tab) in dockButtons)
         {
             bool selected = destination == active;
@@ -948,7 +948,8 @@ internal sealed class Dashboard : W.Window
         root.Children.Add(overlay);
         var title = value switch
         {
-            Panel.Settings => UiText.Text("Настройки"), Panel.Appearance => UiText.Text("Оформление"), Panel.Color => UiText.Text("Свой цвет"), Panel.Sources => UiText.Text("Источники"),
+            Panel.Settings => UiText.Text("Настройки"), Panel.Appearance => UiText.Text("Оформление"), Panel.Language => UiText.Text("Язык"),
+            Panel.Color => UiText.Text("Свой цвет"), Panel.Sources => UiText.Text("Источники"),
             Panel.Update => UiText.Text("Обновления"), Panel.Diagnostics => UiText.Text("Диагностика"),
             Panel.Pairing when displayedAttempt?.Status == "pending" => UiText.Text("Это твой телефон?"),
             Panel.Pairing when displayedAttempt?.Status == "approved" => UiText.Text("Подтверждено"),
@@ -956,7 +957,7 @@ internal sealed class Dashboard : W.Window
             Panel.Device => UiText.Text("Телефон"), _ => UiText.Text("Привязка телефона")
         };
         var titleRow = new C.DockPanel();
-        bool hasParent = value is Panel.Appearance or Panel.Color or Panel.Update or Panel.Diagnostics;
+        bool hasParent = value is Panel.Appearance or Panel.Language or Panel.Color or Panel.Update or Panel.Diagnostics;
         var close = IconButton(hasParent ? UiText.Text("Назад") : UiText.Text("Закрыть"), hasParent ? "ic_left" : CloseGlyph, 39, 39, false, DismissPanel);
         if (hasParent) close.Margin = new W.Thickness(0, 0, 11, 0);
         C.DockPanel.SetDock(close, hasParent ? C.Dock.Left : C.Dock.Right);
@@ -972,6 +973,7 @@ internal sealed class Dashboard : W.Window
             case Panel.Update: ShowUpdates(content); break;
             case Panel.Diagnostics: ShowDiagnostics(content); break;
             case Panel.Appearance: AppearanceSettings(content); break;
+            case Panel.Language: LanguageSettings(content); break;
             case Panel.Color: CustomColor(content); break;
             case Panel.Sources: ShowSources(content); break;
             case Panel.Device: ManageDevice(content, returnFromConfirmation); break;
@@ -993,10 +995,24 @@ internal sealed class Dashboard : W.Window
 
     private void Settings(C.StackPanel content)
     {
-        content.Children.Add(SettingsGroup(SettingsRow(UiText.Text("Оформление"), UiText.Text("Тема, цвет и плеер"), "ic_appearance", "ic_right",
-            () => OpenPanel(Panel.Appearance))));
-        content.Children.Add(SettingsGroup(SettingsRow(UiText.Text("Язык"), identity.Language == "en" ? "English" : "Русский",
-            "ic_settings", "ic_right", ChangeLanguage)));
+        Section(content, UiText.Text("Интерфейс"));
+        var appearance = new C.StackPanel();
+        appearance.Children.Add(SettingsRow(UiText.Text("Оформление"), UiText.Text("Тема, цвет и обложки"), "ic_appearance", "ic_right",
+            () => OpenPanel(Panel.Appearance)));
+        appearance.Children.Add(SettingsSwitch("Упростить анимации", "ic_appearance", identity.ReduceMotion, identity.SetReduceMotion,
+            UiText.Text("Убирает переходы и эффекты движения.")));
+        content.Children.Add(SettingsGroup(appearance));
+        Section(content, UiText.Text("Подключение"));
+        content.Children.Add(SettingsGroup(SettingsSwitch("Синхронизация темы", "ic_auto", identity.SyncAppearance,
+            enabled => { identity.SetSyncAppearance(enabled); media.RefreshAppearance(); },
+            UiText.Text("Применяет тему и акцент на ПК и телефоне."))));
+        Section(content, UiText.Text("Управление"));
+        content.Children.Add(SettingsGroup(SettingsRow(UiText.Text("Устройство при запуске"),
+            identity.StartWithPhone ? UiText.Text("Телефон") : UiText.Text("ПК"), Computer, "ic_right", () =>
+            {
+                identity.SetStartWithPhone(!identity.StartWithPhone);
+                OpenPanel(Panel.Settings, animate: false);
+            })));
         Section(content, "Windows");
         var installed = File.Exists(Path.Combine(AppContext.BaseDirectory, "unins000.exe"));
         var start = SettingsSwitch("Автозапуск", "ic_monitor", installed && StartsAtLogin(), null,
@@ -1020,16 +1036,20 @@ internal sealed class Dashboard : W.Window
         };
         var windows = new C.StackPanel();
         windows.Children.Add(start);
-        windows.Children.Add(SettingsSwitch("Снижать использование памяти в трее", "ic_monitor", identity.ReleaseWindow,
-            identity.SetReleaseWindow));
-        windows.Children.Add(SettingsSwitch("Меньше анимаций", "ic_appearance", identity.ReduceMotion, identity.SetReduceMotion));
+        windows.Children.Add(SettingsSwitch("Экономия памяти в трее", "ic_monitor", identity.ReleaseWindow, identity.SetReleaseWindow,
+            UiText.Text("Освобождает окно при закрытии. Связь продолжает работать.")));
         content.Children.Add(SettingsGroup(windows));
         content.Children.Add(errorNote);
         Section(content, UiText.Text("Приложение"));
         var appRows = new C.StackPanel();
+        var language = SettingsRow(UiText.Text("Язык"), identity.Language == "en" ? "English" : "Русский",
+            "ic_language", "ic_right", () => OpenPanel(Panel.Language));
+        language.Tag = new W.CornerRadius(21, 21, 8, 8);
+        appRows.Children.Add(language);
         var updates = SettingsRow(UiText.Text("Обновления"), UiText.Text("Версия ") + ReleaseUpdates.CurrentVersion.ToString(3),
             "ic_retry", "ic_right", () => OpenPanel(Panel.Update));
-        updates.Tag = new W.CornerRadius(21, 21, 8, 8);
+        updates.Tag = new W.CornerRadius(8);
+        updates.Margin = new W.Thickness(0, 2, 0, 0);
         appRows.Children.Add(updates);
         var diagnostics = SettingsRow(UiText.Text("Диагностика"), UiText.Text("Просмотреть или сохранить журнал"),
             "ic_source", "ic_right", () => OpenPanel(Panel.Diagnostics));
@@ -1039,13 +1059,28 @@ internal sealed class Dashboard : W.Window
         content.Children.Add(SettingsGroup(appRows));
     }
 
-    private void ChangeLanguage()
+    private void LanguageSettings(C.StackPanel content)
     {
-        identity.SetLanguage(identity.Language == "en" ? "ru" : "en");
+        var choices = new C.StackPanel();
+        foreach (var (language, name) in new[] { ("ru", "Русский"), ("en", "English") })
+        {
+            bool selected = identity.Language == language;
+            var row = SettingsRow(name, "", "ic_language", selected ? "ic_selected" : "ic_unselected",
+                () => ChangeLanguage(language), selected);
+            AutomationProperties.SetItemStatus(row, selected ? UiText.Text("Выбрано") : "");
+            choices.Children.Add(row);
+        }
+        content.Children.Add(SettingsGroup(choices));
+    }
+
+    private void ChangeLanguage(string language)
+    {
+        if (identity.Language == language) return;
+        identity.SetLanguage(language);
         UiText.Language = identity.Language;
         ClosePanel(animate: false);
         Build();
-        OpenPanel(Panel.Settings, animate: false);
+        OpenPanel(Panel.Language, animate: false);
     }
 
     private C.CheckBox SettingsSwitch(string title, string icon, bool value, Action<bool>? change, string detail = "")
@@ -1256,15 +1291,7 @@ internal sealed class Dashboard : W.Window
             custom, true, () => OpenPanel(Panel.Color)));
         content.Children.Add(new C.Border { Background = palette.GroupInset, CornerRadius = new W.CornerRadius(24),
             Padding = new W.Thickness(7, 11, 7, 11), Child = colors });
-        content.Children.Add(SettingsGroup(SettingsSwitch("Синхронизировать тему и цвет", "ic_auto", identity.SyncAppearance,
-            enabled => { identity.SetSyncAppearance(enabled); media.RefreshAppearance(); })));
         Section(content, UiText.Text("Плеер"));
-        content.Children.Add(SettingsGroup(SettingsRow(UiText.Text("Устройство при запуске"), identity.StartWithPhone ? UiText.Text("Телефон") : UiText.Text("ПК"),
-            "ic_monitor", "ic_right", () =>
-            {
-                identity.SetStartWithPhone(!identity.StartWithPhone);
-                OpenPanel(Panel.Appearance, animate: false);
-            })));
         content.Children.Add(SettingsGroup(SettingsSwitch("Показывать обложки", "ic_image", identity.ShowArtwork, enabled =>
         {
             identity.SetShowArtwork(enabled);
@@ -1316,9 +1343,16 @@ internal sealed class Dashboard : W.Window
             Child = Glyph(icon, palette.Accent, 20) };
         C.DockPanel.SetDock(leading, C.Dock.Left);
         line.Children.Add(leading);
-        var labels = new C.StackPanel { VerticalAlignment = W.VerticalAlignment.Center };
-        labels.Children.Add(Text(title, 15, palette.Text, true));
-        if (detail.Length > 0) labels.Children.Add(Text(detail, 12, palette.Muted));
+        var labels = new C.StackPanel { VerticalAlignment = W.VerticalAlignment.Center, Margin = new W.Thickness(0, 0, 7, 0) };
+        var heading = Text(title, 15, palette.Text, true);
+        heading.TextWrapping = W.TextWrapping.Wrap;
+        labels.Children.Add(heading);
+        if (detail.Length > 0)
+        {
+            var summary = Text(detail, 12, palette.Muted);
+            summary.TextWrapping = W.TextWrapping.Wrap;
+            labels.Children.Add(summary);
+        }
         line.Children.Add(labels);
         return line;
     }
@@ -1722,7 +1756,7 @@ internal sealed class Dashboard : W.Window
     private void DismissPanel()
     {
         if (panel == Panel.Unpair && identity.Paired) OpenPanel(Panel.Device, animate: false);
-        else if (panel is Panel.Appearance or Panel.Update or Panel.Diagnostics) OpenPanel(Panel.Settings, animate: false);
+        else if (panel is Panel.Appearance or Panel.Language or Panel.Update or Panel.Diagnostics) OpenPanel(Panel.Settings, animate: false);
         else if (panel == Panel.Color) OpenPanel(Panel.Appearance, animate: false);
         else ClosePanel();
     }
@@ -1947,7 +1981,7 @@ internal sealed class Dashboard : W.Window
         VerticalAlignment = W.VerticalAlignment.Center,
     };
 
-    private enum Panel { None, Settings, Appearance, Pairing, Device, Unpair, Color, Sources, Update, Diagnostics }
+    private enum Panel { None, Settings, Appearance, Pairing, Device, Unpair, Color, Sources, Update, Diagnostics, Language }
     private sealed record Palette(bool IsDark, M.Brush Background, M.Brush Card, M.Brush Raised, M.Brush Text, M.Brush Muted,
         M.Brush Accent, M.Brush OnAccent)
     {

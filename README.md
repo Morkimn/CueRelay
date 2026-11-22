@@ -5,6 +5,7 @@ CueRelay is a local media remote for Windows and Android. Control either device'
 ## Install
 
 Download the Windows x64 or ARM64 installer and the Android APK from [GitHub Releases](https://github.com/Morkimn/CueRelay/releases/latest). The Windows installer includes .NET. Android requires Android 8.0 or later. An update from the previous Темп release retains the Android package ID, Windows installer ID, and existing pairing data.
+Windows Setup lets you choose a folder on a fresh install and reuses that folder when updating.
 
 Open CueRelay on both devices on the same home network. On Android, scan the QR code displayed on Windows. Compare the six digits on both screens, then approve on each device. To control Android from the PC, enable «Разрешить управление с ПК» in the Android app and grant Android notification access so CueRelay can discover active media sessions. Windows Setup permits inbound TCP 43198 for the installed CueRelay executable on the local subnet on Public and Private profiles.
 
@@ -27,9 +28,11 @@ Use **Настройки → Диагностика** to view or save a JSON Lin
 
 ## TVs
 
+On Android, open **Settings → TV → Android TV remote** for a shortcut to Google's remote. Google TV pairs directly with the television using the code displayed on its screen, so the PC can be off. [Google TV remote setup](https://support.google.com/googletv/answer/11136134)
+
 The common design for both controllers is to treat the TV as a third, explicitly paired playback device. For Google Cast, an Android sender and a sender in Chrome can control the same compatible receiver when the session is available to them. Cast Connect can launch a compatible installed Android TV receiver on demand. This is limited to the media and commands the receiver supports. For media already opened in another TV app, use a manufacturer-supported control protocol where available. Which integration is feasible depends on the TV model and OS. [Google Cast overview](https://developers.google.com/cast/docs/overview) · [Android TV receivers](https://developers.google.com/cast/docs/android_tv_receiver/)
 
-CueRelay still controls Windows and Android directly. You can cast through a compatible player and control that player from CueRelay if it exposes the cast playback as a normal media session. For control of media already playing in arbitrary Android TV or Google TV apps, a future TV companion would need one-time pairing and access to the TV's Android media sessions. The PC would relay authenticated commands from both CueRelay clients, so the TV would appear as the same third device on both. Background operation is conditional on notification access and the firmware's startup and background policies. Direct TV discovery and controls are not built into CueRelay yet.
+CueRelay still controls Windows and Android directly. You can cast through a compatible player and control that player from CueRelay if it exposes the cast playback as a normal media session. Native control inside CueRelay for media already playing in arbitrary Android TV or Google TV apps would require a TV companion with one-time pairing and access to the TV's media sessions. The phone and PC could each connect directly on the local network. Background operation depends on notification access and the firmware's startup and background policies.
 
 ## Local development and releases
 

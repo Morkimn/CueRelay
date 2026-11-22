@@ -25,6 +25,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewAnimationUtils;
 import android.view.Window;
 import android.view.WindowInsets;
@@ -91,7 +92,9 @@ public final class MainActivity extends Activity {
     private long volumeQuietUntil;
     private float swipeX, swipeY;
     private boolean pageSwipe, volumeKeyHeld;
-    private View dockSurface;
+    private View dockSurface, widgetFab;
+    private DockTouch pageDock;
+    private PageDrag pageDrag;
     private LinearLayout timelinePanel;
     private TextView elapsed, duration;
     private Playback.Source seeking;
@@ -136,6 +139,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override public void onPause() {
+        if (pageDrag != null) completeDrag(pageDrag);
         dismissVolume();
         ui.removeCallbacks(ticker);
         ui.removeCallbacks(sendVolume);
@@ -153,6 +157,7 @@ public final class MainActivity extends Activity {
     }
 
     private void refresh() {
+        if (pageDrag != null) return;
         if ((PhoneLink.connection(this) != null) != paired || Appearance.dark(this) != dark ||
             !Appearance.theme(this).equals(renderedTheme) || !Appearance.accentKey(this).equals(renderedAccent)) {
             Point origin = appearanceOrigin;
@@ -205,6 +210,7 @@ public final class MainActivity extends Activity {
     @Override public boolean dispatchTouchEvent(MotionEvent event) {
         int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
+            if (pageDrag != null) completeDrag(pageDrag);
             swipeX = event.getRawX();
             swipeY = event.getRawY();
             pageSwipe = paired && sheet == null && (volumePopup == null || !volumePopup.isShowing()) &&
@@ -212,23 +218,120 @@ public final class MainActivity extends Activity {
                 (page != Page.PLAYER || !within(seek, swipeX, swipeY));
         } else if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN) {
             pageSwipe = false;
-        } else if (action == MotionEvent.ACTION_UP && pageSwipe) {
-            pageSwipe = false;
+            if (pageDrag != null) {
+                settleDrag(false);
+                return true;
+            }
+        } else if (action == MotionEvent.ACTION_MOVE && pageSwipe) {
             float dx = event.getRawX() - swipeX, dy = event.getRawY() - swipeY;
-            int step = dx < 0 ? 1 : -1;
-            if (getResources().getConfiguration().getLayoutDirection() == View.LAYOUT_DIRECTION_RTL) step = -step;
-            int next = page.ordinal() + step;
-            if (Math.abs(dx) >= dp(70) && Math.abs(dx) > Math.abs(dy) * 1.6f &&
-                next >= 0 && next < Page.values().length) {
-                MotionEvent cancel = MotionEvent.obtain(event);
-                cancel.setAction(MotionEvent.ACTION_CANCEL);
-                super.dispatchTouchEvent(cancel);
-                cancel.recycle();
-                navigate(Page.values()[next]);
+            if (pageDrag == null) {
+                if (Math.abs(dy) > dp(12) && Math.abs(dy) >= Math.abs(dx)) pageSwipe = false;
+                else if (Math.abs(dx) > dp(12) && Math.abs(dx) > Math.abs(dy) * 1.4f) beginDrag(event, dx);
+            }
+            if (pageDrag != null) {
+                positionDrag(pageDrag, dx);
+                return true;
+            }
+        } else if (action == MotionEvent.ACTION_UP) {
+            pageSwipe = false;
+            if (pageDrag != null) {
+                positionDrag(pageDrag, event.getRawX() - swipeX);
+                settleDrag(Math.abs(pageDrag.offset) >= Math.min(dp(82), pageDrag.width * .28f));
                 return true;
             }
         }
         return super.dispatchTouchEvent(event);
+    }
+
+    private void beginDrag(MotionEvent event, float dx) {
+        int step = dx < 0 ? 1 : -1;
+        if (getResources().getConfiguration().getLayoutDirection() == View.LAYOUT_DIRECTION_RTL) step = -step;
+        int next = page.ordinal() + step;
+        if (next < 0 || next >= Page.values().length || pageScroll.getWidth() == 0) return;
+        MotionEvent cancel = MotionEvent.obtain(event);
+        cancel.setAction(MotionEvent.ACTION_CANCEL);
+        super.dispatchTouchEvent(cancel);
+        cancel.recycle();
+        ScrollView outgoing = pageScroll;
+        outgoing.animate().cancel();
+        outgoing.setAlpha(1);
+        PageDrag drag = new PageDrag(page, outgoing, dx < 0 ? -1 : 1);
+        pageDrag = drag;
+        ((ViewGroup) outgoing.getParent()).removeView(outgoing);
+        outgoing.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        previousPage = page;
+        page = Page.values()[next];
+        render(null);
+        FrameLayout root = (FrameLayout) pageScroll.getParent();
+        root.addView(outgoing, 0, new FrameLayout.LayoutParams(-1, -1));
+        outgoing.scrollTo(0, drag.scrollY);
+        if (widgetFab != null) widgetFab.setVisibility(View.INVISIBLE);
+    }
+
+    private void positionDrag(PageDrag drag, float x) {
+        drag.offset = drag.direction * Math.max(0, Math.min(drag.width, x * drag.direction));
+        drag.outgoing.setTranslationX(drag.offset);
+        pageScroll.setTranslationX(drag.offset - drag.direction * drag.width);
+        if (pageDock != null) {
+            float start = pageDock.tabs.getChildAt(drag.from.ordinal()).getLeft();
+            float end = pageDock.tabs.getChildAt(page.ordinal()).getLeft();
+            pageDock.place(start + (end - start) * Math.abs(drag.offset) / drag.width);
+        }
+    }
+
+    private void settleDrag(boolean commit) {
+        PageDrag drag = pageDrag;
+        if (drag == null || drag.settle != null) return;
+        drag.commit = commit;
+        if (!android.animation.ValueAnimator.areAnimatorsEnabled()) {
+            completeDrag(drag);
+            return;
+        }
+        drag.settle = android.animation.ValueAnimator.ofFloat(drag.offset, commit ? drag.direction * drag.width : 0);
+        drag.settle.setDuration(240);
+        drag.settle.setInterpolator(new PathInterpolator(.18f, .8f, .24f, 1));
+        drag.settle.addUpdateListener(value -> positionDrag(drag, (float) value.getAnimatedValue()));
+        drag.settle.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator animator) { completeDrag(drag); }
+        });
+        drag.settle.start();
+    }
+
+    private void completeDrag(PageDrag drag) {
+        if (pageDrag != drag) return;
+        pageDrag = null;
+        if (drag.settle != null) drag.settle.cancel();
+        if (drag.outgoing.getParent() instanceof ViewGroup)
+            ((ViewGroup) drag.outgoing.getParent()).removeView(drag.outgoing);
+        if (!drag.commit) {
+            previousPage = null;
+            page = drag.from;
+            render(null);
+            ScrollView restored = pageScroll;
+            restored.post(() -> restored.scrollTo(0, drag.scrollY));
+            return;
+        }
+        pageScroll.setTranslationX(0);
+        if (widgetFab != null) widgetFab.setVisibility(View.VISIBLE);
+        if (pageDock != null) pageDock.place(pageDock.tabs.getChildAt(page.ordinal()).getLeft());
+        updatePlayback(PhoneLink.playback);
+    }
+
+    private static final class PageDrag {
+        final Page from;
+        final ScrollView outgoing;
+        final int width, direction, scrollY;
+        boolean commit;
+        float offset;
+        android.animation.ValueAnimator settle;
+
+        PageDrag(Page from, ScrollView outgoing, int direction) {
+            this.from = from;
+            this.outgoing = outgoing;
+            this.direction = direction;
+            width = outgoing.getWidth();
+            scrollY = outgoing.getScrollY();
+        }
     }
 
     private static boolean within(View view, float x, float y) {
@@ -248,6 +351,8 @@ public final class MainActivity extends Activity {
     }
 
     private void render(Point origin) {
+        widgetFab = null;
+        pageDock = null;
         dismissVolume();
         ui.removeCallbacks(sendVolume);
         volumeQuietUntil = 0;
@@ -362,6 +467,7 @@ public final class MainActivity extends Activity {
             anchor.setMarginEnd(dp(18));
             anchor.bottomMargin = dp(dockSpace + WIDGET_BUTTON_GAP);
             root.addView(add, anchor);
+            widgetFab = add;
         } else if (page == Page.SOURCES) {
             sourceSignature = null;
             sourcesGrid = column();
@@ -369,7 +475,7 @@ public final class MainActivity extends Activity {
         } else {
             settingsContent(content);
         }
-        if (paired) addDock(root, from);
+        if (paired) addDock(root, pageDrag == null ? from : null);
         if (activitySurface == null) {
             activitySurface = new FrameLayout(this);
             setContentView(activitySurface);
@@ -377,7 +483,7 @@ public final class MainActivity extends Activity {
         reveal(activitySurface, root, origin, -1);
         root.requestApplyInsets();
         if (scrollY != 0) scroll.post(() -> scroll.scrollTo(0, scrollY));
-        if (from != null && android.animation.ValueAnimator.areAnimatorsEnabled()) {
+        if (pageDrag == null && from != null && android.animation.ValueAnimator.areAnimatorsEnabled()) {
             scroll.setAlpha(.40f);
             scroll.setTranslationX(dp(17) * Integer.signum(page.ordinal() - from.ordinal()));
             scroll.animate().alpha(1).translationX(0).setDuration(280)
@@ -424,6 +530,7 @@ public final class MainActivity extends Activity {
         Float release = dockReleaseX;
         dockReleaseX = null;
         DockTouch touch = new DockTouch(tabs, indicator, highlight);
+        pageDock = touch;
         for (int i = 0; i < tabs.getChildCount(); i++) tabs.getChildAt(i).setOnTouchListener(touch);
         tabs.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             View destination = tabs.getChildAt(page.ordinal());
@@ -434,7 +541,9 @@ public final class MainActivity extends Activity {
                 indicator.getLayoutParams().width = destination.getWidth();
                 indicator.requestLayout();
             }
-            if (animate) {
+            if (pageDrag != null) {
+                positionDrag(pageDrag, pageDrag.offset);
+            } else if (animate) {
                 float start = release == null ? tabs.getChildAt(from.ordinal()).getLeft() : release;
                 touch.place(start);
                 if (release != null) touch.lift(true);
@@ -901,33 +1010,70 @@ public final class MainActivity extends Activity {
     }
 
     private void settingsContent(LinearLayout list) {
+        section(list, tr("Интерфейс"));
         menuRow(settingsGroup(list), R.drawable.ic_appearance, tr("Оформление"), tr("Тема, цвет, плеер и виджеты"),
             false, this::appearanceSettings);
-        menuRow(settingsGroup(list), R.drawable.ic_settings, tr("Язык"), "en".equals(UiText.language(this)) ? "English" : "Русский",
-            false, this::changeLanguage);
+        section(list, tr("Подключение"));
+        LinearLayout connection = settingsGroup(list);
+        settingSwitch(connection, R.drawable.ic_auto, tr("Синхронизация темы"), Appearance.SYNC, Appearance.sync(this));
         if (paired) {
-            section(list, tr("Подключение"));
-            LinearLayout connection = settingsGroup(list);
             menuRow(connection, R.drawable.ic_signal, tr("Проверить связь"), tr("Время ответа ПК"), false,
                 () -> PhoneLink.start(this, "check-link", null));
             menuRow(connection, R.drawable.ic_qr, tr("Перепривязать по QR"), "", false, this::requestScan);
             menuRow(connection, R.drawable.ic_keyboard, tr("Ввести код привязки"), "", false, this::pasteCode);
             menuRow(connection, R.drawable.ic_unlink, tr("Отвязать компьютер"), "", false, this::forget);
             sectionPhoneControl(list);
+            section(list, tr("Управление"));
+            settingSwitch(settingsGroup(list), R.drawable.ic_volume, tr("Кнопки громкости управляют ПК"), VOLUME_KEYS,
+                Pairing.prefs(this).getBoolean(VOLUME_KEYS, false));
         }
+        section(list, tr("Телевизор"));
+        menuRow(settingsGroup(list), R.drawable.ic_monitor, tr("Пульт Android TV"), tr("Через приложение Google TV · без ПК"),
+            false, this::tvRemote);
         section(list, tr("Приложение"));
         LinearLayout app = settingsGroup(list);
+        menuRow(app, R.drawable.ic_language, tr("Язык"), "en".equals(UiText.language(this)) ? "English" : "Русский",
+            false, this::languageSettings);
         menuRow(app, R.drawable.ic_retry, tr("Обновления"), tr("Версия ") + ReleaseUpdates.currentVersion(this), false, this::updatesPanel);
         menuRow(app, R.drawable.ic_source, tr("Диагностика"), tr("Просмотреть или сохранить журнал"), false, this::diagnosticsPanel);
     }
 
-    private void changeLanguage() {
-        String language = "en".equals(UiText.language(this)) ? "ru" : "en";
+    private void languageSettings() {
+        panel(tr("Язык"), list -> {
+            LinearLayout options = settingsGroup(list);
+            String language = UiText.language(this);
+            menuRow(options, R.drawable.ic_language, "Русский", "", "ru".equals(language),
+                R.drawable.ic_unselected, () -> changeLanguage("ru"));
+            menuRow(options, R.drawable.ic_language, "English", "", "en".equals(language),
+                R.drawable.ic_unselected, () -> changeLanguage("en"));
+        }, this::settings);
+    }
+
+    private void changeLanguage(String language) {
+        if (language.equals(UiText.language(this))) return;
         Pairing.prefs(this).edit().putString(UiText.LANGUAGE, language).apply();
         render(null);
         PlayerWidget.updateAll(this);
         if (paired) PhoneLink.start(this, "surface", null);
-        else settings();
+        languageSettings();
+    }
+
+    private void tvRemote() {
+        panel(tr("Пульт Android TV"), list -> {
+            list.addView(label(tr("Подключи телефон и телевизор к одной сети. В Google TV открой пульт, выбери телевизор и введи код с его экрана."),
+                15, dim, false));
+            gap(list, 12);
+            list.addView(button(tr("Открыть Google TV"), true, () -> {
+                Intent launch = getPackageManager().getLaunchIntentForPackage("com.google.android.videos");
+                try {
+                    if (launch != null) startActivity(launch);
+                    else startActivity(new Intent(Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.videos")));
+                } catch (android.content.ActivityNotFoundException unavailable) {
+                    showError(tr("Открой Google TV на телефоне, чтобы подключить пульт."));
+                }
+            }), full(49));
+        }, this::settings);
     }
 
     private void paintUpdateNotice() {
@@ -1096,14 +1242,11 @@ public final class MainActivity extends Activity {
         appearanceRow(theme, "dark", tr("Тёмная"), mode, R.drawable.ic_moon);
         section(list, tr("Акцентный цвет"));
         accentChoices(list);
-        settingSwitch(settingsGroup(list), R.drawable.ic_auto, tr("Синхронизировать тему и цвет"), Appearance.SYNC, Appearance.sync(this));
         section(list, tr("Плеер и виджеты"));
         LinearLayout playback = settingsGroup(list);
         settingSwitch(playback, R.drawable.ic_image, tr("Показывать обложки"), "show-art", Appearance.showArtwork(this));
         settingSwitch(playback, R.drawable.ic_bell, tr("Управление в шторке и на экране блокировки"), "system-media",
             Appearance.systemMedia(this));
-        settingSwitch(playback, R.drawable.ic_volume, tr("Кнопки громкости управляют ПК"), VOLUME_KEYS,
-            Pairing.prefs(this).getBoolean(VOLUME_KEYS, false));
     }
 
     private void addThemePreview(LinearLayout list) {
