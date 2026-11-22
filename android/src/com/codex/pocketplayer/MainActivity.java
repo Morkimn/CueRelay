@@ -35,6 +35,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.PopupWindow;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.Switch;
@@ -80,7 +81,8 @@ public final class MainActivity extends Activity {
     private ImageView previous, next, artwork;
     private ViewFlipper toggle;
     private SeekBar seek, volume;
-    private LinearLayout volumeRow;
+    private ImageView volumeButton;
+    private PopupWindow volumePopup;
     private TextView volumePercent;
     private boolean adjustingVolume;
     private long volumeQuietUntil;
@@ -128,6 +130,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override public void onPause() {
+        dismissVolume();
         ui.removeCallbacks(ticker);
         ui.removeCallbacks(sendVolume);
         adjustingVolume = false;
@@ -183,6 +186,7 @@ public final class MainActivity extends Activity {
     }
 
     private void render(Point origin) {
+        dismissVolume();
         ui.removeCallbacks(sendVolume);
         volumeQuietUntil = 0;
         dark = Appearance.dark(this);
@@ -515,10 +519,12 @@ public final class MainActivity extends Activity {
 
         LinearLayout controls = row();
         controls.setGravity(Gravity.CENTER);
+        boolean compactControls = getResources().getConfiguration().screenWidthDp < 340;
+        int skipWidth = compactControls ? 44 : 46;
         previous = icon(R.drawable.ic_previous, "Предыдущий трек", text, 13);
         previous.setBackground(ripple(raised, 17));
         previous.setOnClickListener(v -> action("previous"));
-        LinearLayout.LayoutParams previousSize = new LinearLayout.LayoutParams(dp(46), dp(48));
+        LinearLayout.LayoutParams previousSize = new LinearLayout.LayoutParams(dp(skipWidth), dp(48));
         controls.addView(previous, previousSize);
         toggle = (ViewFlipper) getLayoutInflater().inflate(R.layout.widget_toggle, controls, false);
         GradientDrawable playShape = shape(accent, 26);
@@ -531,34 +537,49 @@ public final class MainActivity extends Activity {
         }
         toggle.setOnClickListener(v -> action("toggle"));
         springPress(toggle);
-        LinearLayout.LayoutParams main = new LinearLayout.LayoutParams(dp(70), dp(61));
-        main.setMargins(dp(7), 0, dp(7), 0);
+        LinearLayout.LayoutParams main = new LinearLayout.LayoutParams(dp(compactControls ? 60 : 70), dp(61));
+        int playGap = dp(compactControls ? 5 : 7);
+        main.setMargins(playGap, 0, playGap, 0);
         controls.addView(toggle, main);
         next = icon(R.drawable.ic_next, "Следующий трек", text, 13);
         next.setBackground(ripple(raised, 17));
         next.setOnClickListener(v -> action("next"));
-        controls.addView(next, new LinearLayout.LayoutParams(dp(46), dp(48)));
-        card.addView(controls);
-        addVolume(card);
+        controls.addView(next, new LinearLayout.LayoutParams(dp(skipWidth), dp(48)));
+        FrameLayout playbackRow = new FrameLayout(this);
+        playbackRow.addView(controls, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+        addVolume(playbackRow);
+        card.addView(playbackRow, new LinearLayout.LayoutParams(-1, -2));
     }
 
-    private void addVolume(LinearLayout card) {
+    private void addVolume(FrameLayout playbackRow) {
         adjustingVolume = false;
-        volumeRow = row();
-        volumeRow.setGravity(Gravity.CENTER_VERTICAL);
-        volumeRow.setVisibility(View.GONE);
-        volumeRow.addView(label("Громкость", 12, dim, false));
+        volumeButton = icon(R.drawable.ic_volume, "Громкость компьютера", text, 11);
+        volumeButton.setBackground(ripple(raised, 15));
+        volumeButton.setVisibility(View.GONE);
+        playbackRow.addView(volumeButton, new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.END | Gravity.CENTER_VERTICAL));
+
+        LinearLayout volumeRow = row();
+        volumeRow.setPadding(dp(9), 0, dp(12), 0);
         volume = new SeekBar(this);
         volume.setMax(100);
         volume.setContentDescription("Громкость компьютера");
         volume.setProgressTintList(ColorStateList.valueOf(accent));
-        volume.setProgressBackgroundTintList(ColorStateList.valueOf(raised));
+        volume.setProgressBackgroundTintList(ColorStateList.valueOf(Appearance.mix(raised, dim, .35)));
         volume.setThumbTintList(ColorStateList.valueOf(accent));
         volumeRow.addView(volume, new LinearLayout.LayoutParams(0, dp(48), 1));
         volumePercent = label("", 12, dim, false);
         volumePercent.setGravity(Gravity.END);
         volumeRow.addView(volumePercent, new LinearLayout.LayoutParams(dp(34), -2));
-        card.addView(volumeRow, new LinearLayout.LayoutParams(-1, -2));
+        volumePopup = new PopupWindow(volumeRow, dp(176), dp(48), true);
+        volumePopup.setBackgroundDrawable(shape(raised, 16));
+        volumePopup.setElevation(dp(8));
+        volumePopup.setOutsideTouchable(true);
+        volumePopup.setOnDismissListener(() -> adjustingVolume = false);
+        volumeButton.setOnClickListener(v -> {
+            if (volumePopup.isShowing()) volumePopup.dismiss();
+            else volumePopup.showAsDropDown(volumeButton, 0,
+                -volumeButton.getHeight() - volumePopup.getHeight() - dp(4), Gravity.END);
+        });
         volume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onStartTrackingTouch(SeekBar bar) { adjustingVolume = true; }
             @Override public void onStopTrackingTouch(SeekBar bar) { adjustingVolume = false; }
@@ -572,9 +593,14 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void dismissVolume() {
+        if (volumePopup != null) volumePopup.dismiss();
+    }
+
     private void refreshVolume(Playback state) {
         int level = state == null ? -1 : state.volume;
-        volumeRow.setVisibility(level < 0 ? View.GONE : View.VISIBLE);
+        volumeButton.setVisibility(level < 0 ? View.GONE : View.VISIBLE);
+        if (level < 0) dismissVolume();
         if (level >= 0 && !adjustingVolume && android.os.SystemClock.elapsedRealtime() >= volumeQuietUntil) {
             volume.setProgress(level);
             volumePercent.setText(level + "%");
