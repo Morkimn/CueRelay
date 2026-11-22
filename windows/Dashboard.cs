@@ -623,8 +623,11 @@ internal sealed class Dashboard : W.Window
         details.Visibility = details.Text.Length == 0 ? W.Visibility.Collapsed : W.Visibility.Visible;
         bool canLike = ((current?.Rating ?? 0) & 1) != 0;
         bool canDislike = ((current?.Rating ?? 0) & 2) != 0;
-        like.Visibility = canLike ? W.Visibility.Visible : W.Visibility.Collapsed;
+        like.Visibility = canLike ? W.Visibility.Visible : canDislike ? W.Visibility.Hidden : W.Visibility.Collapsed;
         dislike.Visibility = canDislike ? W.Visibility.Visible : canLike ? W.Visibility.Hidden : W.Visibility.Collapsed;
+        int selectedRating = current?.RatingSelected ?? 0;
+        PaintRating(like, "ic_like", (selectedRating & 1) != 0);
+        PaintRating(dislike, "ic_dislike", (selectedRating & 2) != 0);
         previous.IsEnabled = current?.Previous == true;
         next.IsEnabled = current?.Next == true;
         toggle.IsEnabled = current?.Toggle == true;
@@ -639,6 +642,15 @@ internal sealed class Dashboard : W.Window
         }
         SetPlayIcon(nextPlaying, animate);
         RefreshTimeline();
+    }
+
+    private void PaintRating(C.Button button, string icon, bool selected)
+    {
+        var fill = selected ? palette.Accent : palette.Raised;
+        if (button.Background == fill) return;
+        button.Background = fill;
+        button.Content = Glyph(icon, selected ? palette.OnAccent : palette.Text, 18);
+        AutomationProperties.SetItemStatus(button, selected ? "Выбрано" : "");
     }
 
     private void BuildVolume(C.Grid playbackRow)

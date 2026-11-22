@@ -61,7 +61,8 @@ internal sealed class PhoneRemote(Identity identity)
                             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), item.Playing && double.IsFinite(item.Rate)
                                 ? Math.Clamp(item.Rate, 0, 4) : 0, item.Seek, 0, item.Duration);
                     sources.Add(new(item.Id, Limit(item.App, 80), Limit(item.Title, 160), Limit(item.Artist, 120),
-                        item.Playing, item.Toggle, item.Previous, item.Next, imageKey, timeline, item.Rating & 3));
+                        item.Playing, item.Toggle, item.Previous, item.Next, imageKey, timeline,
+                        item.Rating & 3, item.RatingSelected & item.Rating & 3));
                 }
             }
             int? volume = status == "ready" && report.Volume is >= 0 and <= 100 ? report.Volume : null;
@@ -167,6 +168,7 @@ internal sealed class PhoneRemote(Identity identity)
         bool FastCommands = false, int? Volume = null);
     internal sealed record PhoneReport(string Device, string Status, PhoneTrack[]? Sources, bool PushOnly = false, int? Volume = null);
     internal sealed record PhoneTrack(string Id, string App, string Title, string Artist, bool Playing, bool Toggle,
-        bool Previous, bool Next, bool Seek, long Duration, long Position, double Rate, string? Cover, int Rating = 0);
+        bool Previous, bool Next, bool Seek, long Duration, long Position, double Rate, string? Cover, int Rating = 0,
+        int RatingSelected = 0);
     internal sealed record PhoneCommand(string Id, string Action, long? PositionMs, string Title);
 }

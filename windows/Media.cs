@@ -9,7 +9,7 @@ using Windows.Storage.Streams;
 namespace PocketPlayer;
 
 internal sealed record Source(string Id, string App, string Title, string Artist, bool Playing,
-    bool Toggle, bool Previous, bool Next, string Art, TrackTimeline? Timeline, int Rating = 0);
+    bool Toggle, bool Previous, bool Next, string Art, TrackTimeline? Timeline, int Rating = 0, int RatingSelected = 0);
 
 internal sealed record TrackTimeline(long DurationMs, long PositionMs, long UpdatedAtMs, double Rate,
     bool CanSeek, long MinSeekMs, long MaxSeekMs)

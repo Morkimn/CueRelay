@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.media.MediaMetadata;
+import android.media.Rating;
 import android.media.session.MediaController;
 import android.media.session.MediaSession;
 import android.media.session.MediaSessionManager;
@@ -47,7 +48,11 @@ public final class PhoneMedia extends NotificationListenerService {
         if (manager == null) return Collections.emptyList();
         List<MediaController> visible = new ArrayList<>();
         for (MediaController controller : manager.getActiveSessions(new ComponentName(context, PhoneMedia.class))) {
-            if (!context.getPackageName().equals(controller.getPackageName())) visible.add(controller);
+            // Both builds can publish a proxy for the same Windows player on this phone.
+            String owner = controller.getPackageName();
+            if (!owner.equals(context.getPackageName()) &&
+                !owner.equals("com.codex.pocketplayer") && !owner.equals("com.codex.pocketplayer.dev"))
+                visible.add(controller);
         }
         return visible;
     }
@@ -154,7 +159,8 @@ public final class PhoneMedia extends NotificationListenerService {
                     .put("next", has(actions, PlaybackState.ACTION_SKIP_TO_NEXT))
                     .put("seek", duration > 0 && has(actions, PlaybackState.ACTION_SEEK_TO))
                     .put("duration", Math.max(0, duration)).put("position", Math.max(0, position)).put("rate", rate);
-                source.put("rating", rating(item, actions));
+                RatingActions ratings = ratingActions(item, state);
+                source.put("rating", ratings.supported).put("ratingSelected", ratings.selected);
                 if (includeCovers) source.put("cover", cover(token, title, info));
                 sources.put(source);
                 sent.put(id, item);
@@ -233,10 +239,42 @@ public final class PhoneMedia extends NotificationListenerService {
             audio.setStreamVolume(stream, Math.round(level * audio.getStreamMaxVolume(stream) / 100f), 0);
         }
 
-        private static int rating(MediaController controller, long actions) {
-            if (!has(actions, PlaybackState.ACTION_SET_RATING)) return 0;
-            if (controller.getRatingType() == android.media.Rating.RATING_THUMB_UP_DOWN) return 3;
-            return controller.getRatingType() == android.media.Rating.RATING_HEART ? 1 : 0;
+        private static RatingActions ratingActions(MediaController controller, PlaybackState state) {
+            RatingActions result = new RatingActions();
+            if (state == null) return result;
+            if (has(state.getActions(), PlaybackState.ACTION_SET_RATING)) {
+                int style = controller.getRatingType();
+                if (style == Rating.RATING_THUMB_UP_DOWN) result.standard = 3;
+                else if (style == Rating.RATING_HEART) result.standard = 1;
+                MediaMetadata info = controller.getMetadata();
+                Rating user = info == null ? null : info.getRating(MediaMetadata.METADATA_KEY_USER_RATING);
+                if (user != null && user.isRated() && user.getRatingStyle() == style) {
+                    if (style == Rating.RATING_THUMB_UP_DOWN) result.selected = user.isThumbUp() ? 1 : 2;
+                    else if (style == Rating.RATING_HEART && user.hasHeart()) result.selected = 1;
+                }
+            }
+            result.supported = result.standard;
+            // Yandex Music exposes both buttons as custom actions, with their current state in the label.
+            if ("ru.yandex.music".equals(controller.getPackageName())) {
+                for (PlaybackState.CustomAction action : state.getCustomActions()) {
+                    String label = action.getName().toString();
+                    if (label.equalsIgnoreCase("Like Selected") || label.equalsIgnoreCase("Like Not selected")) {
+                        result.like = action;
+                        result.supported |= 1;
+                        result.selected = (result.selected & ~1) | (label.equalsIgnoreCase("Like Selected") ? 1 : 0);
+                    } else if (label.equalsIgnoreCase("Dislike Selected") || label.equalsIgnoreCase("Dislike Not selected")) {
+                        result.dislike = action;
+                        result.supported |= 2;
+                        result.selected = (result.selected & ~2) | (label.equalsIgnoreCase("Dislike Selected") ? 2 : 0);
+                    }
+                }
+            }
+            return result;
+        }
+
+        private static final class RatingActions {
+            int standard, supported, selected;
+            PlaybackState.CustomAction like, dislike;
         }
 
         private void dispatch(MediaController controller, JSONObject command) {
@@ -248,10 +286,12 @@ public final class PhoneMedia extends NotificationListenerService {
                 case "like":
                 case "dislike":
                     boolean like = "like".equals(command.optString("action"));
-                    int supported = rating(controller, actions);
-                    if ((supported & (like ? 1 : 2)) == 0 ||
-                        !title(controller.getMetadata()).equals(command.optString("title"))) break;
-                    controls.setRating(supported == 3 ? android.media.Rating.newThumbRating(like) : android.media.Rating.newHeartRating(true));
+                    if (!title(controller.getMetadata()).equals(command.optString("title"))) break;
+                    RatingActions ratings = ratingActions(controller, state);
+                    PlaybackState.CustomAction custom = like ? ratings.like : ratings.dislike;
+                    if (custom != null) controls.sendCustomAction(custom, custom.getExtras());
+                    else if ((ratings.standard & (like ? 1 : 2)) != 0)
+                        controls.setRating(ratings.standard == 3 ? Rating.newThumbRating(like) : Rating.newHeartRating(true));
                     break;
                 case "play":
                     if (has(actions, PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PLAY_PAUSE)) controls.play();
