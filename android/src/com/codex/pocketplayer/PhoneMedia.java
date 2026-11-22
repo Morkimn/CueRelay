@@ -254,8 +254,17 @@ public final class PhoneMedia extends NotificationListenerService {
                 }
             }
             result.supported = result.standard;
-            // Yandex Music exposes both buttons as custom actions, with their current state in the label.
-            if ("ru.yandex.music".equals(controller.getPackageName())) {
+            String owner = controller.getPackageName();
+            if ("com.soundcloud.android".equals(owner)) {
+                for (PlaybackState.CustomAction action : state.getCustomActions()) {
+                    if ("LikeRatingAction".contentEquals(action.getName())) {
+                        result.like = action;
+                        result.supported |= 1;
+                        break;
+                    }
+                }
+            } else if ("ru.yandex.music".equals(owner)) {
+                // Yandex Music includes the current selection in each custom action label.
                 for (PlaybackState.CustomAction action : state.getCustomActions()) {
                     String label = action.getName().toString();
                     if (label.equalsIgnoreCase("Like Selected") || label.equalsIgnoreCase("Like Not selected")) {
