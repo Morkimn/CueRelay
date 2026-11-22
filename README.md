@@ -18,6 +18,19 @@ Both apps check GitHub Releases when open and announce a newer version in the in
 
 Use **Настройки → Диагностика** to view or save a JSON Lines log. Each line contains a UTC timestamp, platform, version, architecture, component and an event code. The app writes to the Windows temporary directory or the Android app cache. Logs are size-limited and older files are discarded at startup. They omit pairing codes, secrets, IP addresses, device names, and track metadata. Export is initiated by the user.
 
+## How it works
+
+- **Windows playback.** The .NET service reads playback sessions from Windows Global System Media Transport Controls. It uses Core Audio for the default output's volume. The WPF window and tray icon share this service. Closing the window keeps the local connection working. Enable **Settings → Save memory in the system tray** to release the window when you close it and recreate it when you reopen CueRelay.
+- **Android playback.** The Android app uses notification access to discover the phone's media sessions. It can forward transport commands, media volume and the rating actions advertised by a player. You can choose which Android apps to share with the PC. The volume buttons can optionally adjust PC volume while the CueRelay screen is in the foreground.
+- **Connection.** Android discovers Windows on the local network and connects using HTTPS with a pinned certificate. QR pairing grants a device-specific credential after confirmation. The phone receives Windows state through a long poll and reports its own state over the same authenticated connection. Media stays in the original player.
+- **Background operation.** Android uses a foreground service for widgets and remote control when the app is closed, with the system's required status notification. The optional media controls can be turned off in **Appearance → Player and widgets**. The language and appearance-sync preferences apply per device.
+
+## TVs
+
+The common design for both controllers is to treat the TV as a third, explicitly paired playback device. For Google Cast, an Android sender and a sender in Chrome can control the same compatible receiver when the session is available to them. Cast Connect can launch a compatible installed Android TV receiver on demand. This is limited to the media and commands the receiver supports. For media already opened in another TV app, use a manufacturer-supported control protocol where available. Which integration is feasible depends on the TV model and OS. [Google Cast overview](https://developers.google.com/cast/docs/overview) · [Android TV receivers](https://developers.google.com/cast/docs/android_tv_receiver/)
+
+CueRelay still controls Windows and Android directly. You can cast through a compatible player and control that player from CueRelay if it exposes the cast playback as a normal media session. For control of media already playing in arbitrary Android TV or Google TV apps, a future TV companion would need one-time pairing and access to the TV's Android media sessions. The PC would relay authenticated commands from both CueRelay clients, so the TV would appear as the same third device on both. Background operation is conditional on notification access and the firmware's startup and background policies. Direct TV discovery and controls are not built into CueRelay yet.
+
 ## Local development and releases
 
 On Windows, install the .NET 10 SDK and Inno Setup 6.7. Use PowerShell from the project directory.

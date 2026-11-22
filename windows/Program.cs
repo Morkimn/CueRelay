@@ -41,6 +41,7 @@ internal static class Program
         {
             Diagnostics.Record("app", "started");
             using var identity = new Identity(directory);
+            UiText.Language = identity.Language;
             using var media = new Media(identity);
             var phone = new PhoneRemote(identity);
             using var cancellation = new CancellationTokenSource();
@@ -76,7 +77,7 @@ internal static class Program
         catch (Exception exception)
         {
             Diagnostics.Record("app", "startup_failed", exception);
-            MessageBox.Show("Не удалось запустить CueRelay.\n" + exception.Message, Title,
+            MessageBox.Show(UiText.Text("Не удалось запустить CueRelay.") + "\n" + exception.Message, Title,
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -170,7 +171,7 @@ internal static class Program
         attempt is null ? Results.StatusCode(403) : Results.Json(new
         {
             attempt.Status, attempt.Check, attempt.Token, computer = Environment.MachineName,
-            theme = identity.Theme, accent = identity.Accent
+            theme = identity.Theme, accent = identity.Accent, syncAppearance = identity.SyncAppearance
         });
 
     private static string? Token(HttpContext context)

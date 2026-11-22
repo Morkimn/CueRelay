@@ -21,6 +21,7 @@
     <Resource Include="Fonts\*.ttf" />
     <EmbeddedResource Include="CueRelay.ico" LogicalName="CueRelay.Icon" />
     <EmbeddedResource Include="..\Update-Channel.txt" LogicalName="CueRelay.UpdateChannel" />
+    <EmbeddedResource Include="..\locales\en.txt" LogicalName="CueRelay.English" />
     <EmbeddedResource Include="..\android\res\drawable\ic_*.xml" LogicalName="Tempo.Icons.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

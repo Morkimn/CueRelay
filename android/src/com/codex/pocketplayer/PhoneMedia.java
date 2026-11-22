@@ -266,7 +266,8 @@ public final class PhoneMedia extends NotificationListenerService {
             String owner = controller.getPackageName();
             if ("com.soundcloud.android".equals(owner)) {
                 for (PlaybackState.CustomAction action : state.getCustomActions()) {
-                    if ("LikeRatingAction".contentEquals(action.getName())) {
+                    if ("LikeRatingAction".contentEquals(action.getName()) ||
+                        "UnLikeRatingAction".contentEquals(action.getName())) {
                         result.like = action;
                         result.supported |= 1;
                         if (soundCloudLiked(owner, action.getIcon())) result.selected |= 1;

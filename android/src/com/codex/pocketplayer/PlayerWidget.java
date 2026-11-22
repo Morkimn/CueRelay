@@ -151,7 +151,7 @@ public abstract class PlayerWidget extends AppWidgetProvider {
         if (format.metadata) {
             view.setTextColor(R.id.title, text);
             view.setTextViewText(R.id.title, session != null ? session.displayTitle() :
-                pairing == null ? "Подключить ПК" : playback == null ? "ПК недоступен" : "Нет воспроизведения");
+                pairing == null ? UiText.text(context, "Подключить ПК") : playback == null ? UiText.text(context, "ПК недоступен") : UiText.text(context, "Нет воспроизведения"));
             view.setOnClickPendingIntent(R.id.title, pairing == null ? open : select);
             view.setTextColor(R.id.subtitle, dim);
             view.setTextViewText(R.id.subtitle, session != null ?
@@ -165,7 +165,8 @@ public abstract class PlayerWidget extends AppWidgetProvider {
             if (playback != null && playback.art != null && Appearance.showArtwork(context))
                 view.setImageViewBitmap(R.id.artwork, playback.art);
             else view.setImageViewResource(R.id.artwork, R.drawable.ic_note);
-            if (session != null) view.setContentDescription(R.id.artwork, "Обложка: " + session.displayTitle());
+            view.setContentDescription(R.id.artwork, session == null ? UiText.text(context, "Обложка") :
+                UiText.text(context, "Обложка: ") + session.displayTitle());
             view.setOnClickPendingIntent(R.id.artwork, pairing == null ? open : select);
         }
         boolean playing = session != null && session.playing;
@@ -175,19 +176,23 @@ public abstract class PlayerWidget extends AppWidgetProvider {
             tint(view, idButton, color.raised);
         }
         button(view, R.id.source, select, text, subdued);
-        if (format == Format.BUTTONS)
+        view.setContentDescription(R.id.source, UiText.text(context, "Выбрать источник"));
+        if (format == Format.BUTTONS) {
             button(view, R.id.previous, session != null && session.previous ?
                 command(context, format, id, "previous", session.id) : null, text, subdued);
+            view.setContentDescription(R.id.previous, UiText.text(context, "Предыдущий трек"));
+        }
         button(view, R.id.next, session != null && session.next ?
             command(context, format, id, "next", session.id) : null, text, subdued);
+        view.setContentDescription(R.id.next, UiText.text(context, "Следующий трек"));
 
         int glyphColor = color.onAccent;
         for (int glyph : new int[]{R.id.play_glyph, R.id.pause_glyph, R.id.retry_glyph})
             view.setInt(glyph, "setColorFilter", glyphColor);
         boolean offline = playback == null && pairing != null;
         view.setDisplayedChild(R.id.toggle, offline ? 2 : playing ? 1 : 0);
-        view.setContentDescription(R.id.toggle, pairing == null ? "Подключить ПК" :
-            offline ? "Восстановить связь" : playing ? "Пауза" : "Воспроизвести");
+        view.setContentDescription(R.id.toggle, pairing == null ? UiText.text(context, "Подключить ПК") :
+            offline ? UiText.text(context, "Восстановить связь") : playing ? UiText.text(context, "Пауза") : UiText.text(context, "Воспроизвести"));
         view.setOnClickPendingIntent(R.id.toggle, pairing == null ? open : offline ?
             command(context, format, id, "refresh", null) : session != null && session.toggle ?
             command(context, format, id, "toggle", session.id) : null);
@@ -214,7 +219,7 @@ public abstract class PlayerWidget extends AppWidgetProvider {
             if (n >= visible.size()) continue;
             Playback.Source item = visible.get(n);
             view.setTextViewText(button, item.app);
-            view.setContentDescription(button, "Источник: " + item.app);
+            view.setContentDescription(button, UiText.text(context, "Источник: ") + item.app);
             view.setTextColor(button, item == playback.selected ? colors.accent : colors.text);
             view.setInt(button, "setBackgroundResource", dark ? R.drawable.button_dark : R.drawable.button_light);
             tint(view, button, item == playback.selected ? Appearance.mix(colors.raised, colors.accent, .20) : colors.raised);
@@ -235,14 +240,14 @@ public abstract class PlayerWidget extends AppWidgetProvider {
         int active = activeIndex(context, playback);
         if (format.pageSize > 1) {
             view.setTextColor(R.id.source_heading, text);
-            view.setTextViewText(R.id.source_heading, "Источники");
+            view.setTextViewText(R.id.source_heading, UiText.text(context, "Источники"));
         }
         for (int i = 0; i < format.pageSize; i++) {
             int row = rows[i], index = first + i;
             view.setViewVisibility(row, index < count ? View.VISIBLE : View.GONE);
             if (index >= count) continue;
             Playback.Source item = index == 0 ? null : playback.sources.get(index - 1);
-            String label = item == null ? "Автовыбор" : item.app +
+            String label = item == null ? UiText.text(context, "Автовыбор") : item.app +
                 (item.title.isEmpty() || item.title.equals(item.app) ? "" : " · " + item.title);
             if (format.pageSize == 1) label += "  ·  " + (index + 1) + "/" + count;
             view.setTextViewText(row, (index == active ? "✓  " : "") + label);
@@ -253,6 +258,11 @@ public abstract class PlayerWidget extends AppWidgetProvider {
         button(view, R.id.page_next, first + format.pageSize < count ?
             command(context, format, id, "page-down", null) : null, text, subdued);
         button(view, R.id.panel_close, command(context, format, id, "close-sources", null), text, subdued);
+        view.setContentDescription(R.id.page_previous, UiText.text(context,
+            format.pageSize > 1 ? "Предыдущая страница" : "Предыдущий источник"));
+        view.setContentDescription(R.id.page_next, UiText.text(context,
+            format.pageSize > 1 ? "Следующая страница" : "Следующий источник"));
+        view.setContentDescription(R.id.panel_close, UiText.text(context, "Закрыть список"));
     }
 
     private static void button(RemoteViews view, int id, PendingIntent command, int normal, int disabled) {

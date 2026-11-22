@@ -63,7 +63,7 @@ final class SystemMedia implements AutoCloseable {
                 timeline == null ? PlaybackState.PLAYBACK_POSITION_UNKNOWN : timeline.now(),
                 timeline == null ? current.playing ? 1f : 0f : (float) timeline.rate);
         if (playback.sources.size() > 1)
-            state.addCustomAction(new PlaybackState.CustomAction.Builder(CYCLE, "Сменить источник", R.drawable.ic_source).build());
+            state.addCustomAction(new PlaybackState.CustomAction.Builder(CYCLE, UiText.text(context, "Сменить источник"), R.drawable.ic_source).build());
         session.setPlaybackState(state.build());
         String byline = current.artist.isEmpty() ? current.app : current.artist;
         MediaMetadata.Builder metadata = new MediaMetadata.Builder().putString(MediaMetadata.METADATA_KEY_TITLE, current.displayTitle())
@@ -76,14 +76,14 @@ final class SystemMedia implements AutoCloseable {
         session.setMetadata(metadata.build());
         session.setActive(true);
 
-        if (current.previous) add(builder, R.drawable.ic_previous, "Предыдущий трек", "previous");
+        if (current.previous) add(builder, R.drawable.ic_previous, UiText.text(context, "Предыдущий трек"), "previous");
         if (current.toggle) add(builder, current.playing ? R.drawable.ic_pause : R.drawable.ic_play,
-            current.playing ? "Пауза" : "Воспроизвести", current.playing ? "pause" : "play");
-        if (current.next) add(builder, R.drawable.ic_next, "Следующий трек", "next");
+            current.playing ? UiText.text(context, "Пауза") : UiText.text(context, "Воспроизвести"), current.playing ? "pause" : "play");
+        if (current.next) add(builder, R.drawable.ic_next, UiText.text(context, "Следующий трек"), "next");
         int count = (current.previous ? 1 : 0) + (current.toggle ? 1 : 0) + (current.next ? 1 : 0);
         int[] visible = new int[count];
         for (int i = 0; i < count; i++) visible[i] = i;
-        if (playback.sources.size() > 1) add(builder, R.drawable.ic_source, "Сменить источник", "cycle-source");
+        if (playback.sources.size() > 1) add(builder, R.drawable.ic_source, UiText.text(context, "Сменить источник"), "cycle-source");
         builder.setStyle(new Notification.MediaStyle().setMediaSession(session.getSessionToken()).setShowActionsInCompactView(visible))
             .setContentTitle(current.displayTitle()).setContentText(byline)
             .setSubText("CueRelay · " + playback.computer)

@@ -5,6 +5,7 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 
 final class Appearance {
+    static final String SYNC = "sync-appearance";
     private Appearance() { }
 
     static String theme(Context context) {
@@ -25,6 +26,16 @@ final class Appearance {
 
     static boolean systemMedia(Context context) {
         return Pairing.prefs(context).getBoolean("system-media", true);
+    }
+
+    static boolean sync(Context context) {
+        return Pairing.prefs(context).getBoolean(SYNC, true);
+    }
+
+    static void takeRemote(Context context, Playback state) {
+        if (state == null || !state.syncAppearance || !sync(context)) return;
+        if (!state.theme.equals(theme(context)) || !state.accent.equals(accentKey(context)))
+            Pairing.prefs(context).edit().putString("theme", state.theme).putString("accent", state.accent).apply();
     }
 
     static String accentKey(Context context) {

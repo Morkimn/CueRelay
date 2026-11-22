@@ -151,7 +151,9 @@ internal sealed class Dashboard : W.Window
                         <Border x:Name="Track" DockPanel.Dock="Right" Width="48" Height="28" CornerRadius="14"
                                 Background="{TemplateBinding BorderBrush}">
                             <Ellipse x:Name="Knob" Width="22" Height="22" HorizontalAlignment="Left"
-                                     Margin="3,0" Fill="#96929D"/>
+                                     Margin="3,0" Fill="#96929D">
+                                <Ellipse.RenderTransform><TranslateTransform/></Ellipse.RenderTransform>
+                            </Ellipse>
                         </Border>
                         <ContentPresenter VerticalAlignment="Center"/>
                     </DockPanel>
@@ -159,7 +161,6 @@ internal sealed class Dashboard : W.Window
                 <ControlTemplate.Triggers>
                     <Trigger Property="IsChecked" Value="True">
                         <Setter TargetName="Track" Property="Background" Value="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"/>
-                        <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right"/>
                         <Setter TargetName="Knob" Property="Fill" Value="{Binding Foreground, RelativeSource={RelativeSource TemplatedParent}}"/>
                     </Trigger>
                     <Trigger Property="IsEnabled" Value="False">
@@ -322,7 +323,7 @@ internal sealed class Dashboard : W.Window
         C.DockPanel.SetDock(phoneCard, C.Dock.Right);
         header.Children.Add(phoneCard);
         header.SizeChanged += (_, args) => deviceName.MaxWidth = Math.Clamp(args.NewSize.Width - 350, 130, 240);
-        targetMode = IconButton("Переключить устройство", Computer, 48, 48, false, () => SelectTarget(!usePhone));
+        targetMode = IconButton(UiText.Text("Переключить устройство"), Computer, 48, 48, false, () => SelectTarget(!usePhone));
         targetMode.VerticalAlignment = W.VerticalAlignment.Center;
         targetMode.Margin = new W.Thickness(12, 0, 0, 0);
         SpringPress(targetMode);
@@ -354,7 +355,7 @@ internal sealed class Dashboard : W.Window
             new W.Rect(0, 0, artGrid.ActualWidth, artGrid.ActualHeight), 27, 27);
         artworkPlaceholder = Glyph("ic_note", palette.Accent, 66);
         artwork = new C.Image { Stretch = M.Stretch.UniformToFill };
-        AutomationProperties.SetName(artwork, "Обложка");
+        AutomationProperties.SetName(artwork, UiText.Text("Обложка"));
         artGrid.Children.Add(artworkPlaceholder);
         artGrid.Children.Add(artwork);
         artFrame.Child = artGrid;
@@ -377,16 +378,16 @@ internal sealed class Dashboard : W.Window
         playbackRow.ColumnDefinitions.Add(new C.ColumnDefinition { MinWidth = 42 });
         var controls = new C.StackPanel { Orientation = C.Orientation.Horizontal };
         const int trackSize = 46, ratingSize = 42;
-        previous = IconButton("Предыдущий трек", Previous, trackSize, trackSize, false, () => Command("previous"));
-        toggle = IconButton("Воспроизвести", Play, 70, 61, true, () => Command("toggle"));
+        previous = IconButton(UiText.Text("Предыдущий трек"), Previous, trackSize, trackSize, false, () => Command("previous"));
+        toggle = IconButton(UiText.Text("Воспроизвести"), Play, 70, 61, true, () => Command("toggle"));
         toggle.Tag = new W.CornerRadius(27, 20, 26, 20);
         SpringPress(toggle);
         playGlyph = (W.FrameworkElement)toggle.Content;
         playGlyph.RenderTransformOrigin = new W.Point(.5, .5);
         toggle.Margin = new W.Thickness(8, 0, 8, 0);
-        next = IconButton("Следующий трек", Next, trackSize, trackSize, false, () => Command("next"));
-        dislike = IconButton("Дизлайк", "ic_dislike", ratingSize, ratingSize, false, () => Command("dislike"));
-        like = IconButton("Лайк", "ic_like", ratingSize, ratingSize, false, () => Command("like"));
+        next = IconButton(UiText.Text("Следующий трек"), Next, trackSize, trackSize, false, () => Command("next"));
+        dislike = IconButton(UiText.Text("Дизлайк"), "ic_dislike", ratingSize, ratingSize, false, () => Command("dislike"));
+        like = IconButton(UiText.Text("Лайк"), "ic_like", ratingSize, ratingSize, false, () => Command("like"));
         dislike.Margin = new W.Thickness(0, 0, 6, 0);
         like.Margin = new W.Thickness(6, 0, 0, 0);
         var squareButtons = new[] { (previous, trackSize), (next, trackSize), (dislike, ratingSize), (like, ratingSize) };
@@ -465,7 +466,7 @@ internal sealed class Dashboard : W.Window
         actions.Triggers.Add(hover);
         var items = new (string Label, string Icon, Panel Destination)[]
         {
-            ("Плеер", "ic_note", Panel.None), ("Источники", SourcesGlyph, Panel.Sources), ("Настройки", Gear, Panel.Settings)
+            (UiText.Text("Плеер"), "ic_note", Panel.None), (UiText.Text("Источники"), SourcesGlyph, Panel.Sources), (UiText.Text("Настройки"), Gear, Panel.Settings)
         };
         for (int i = 0; i < items.Length; i++)
         {
@@ -514,7 +515,7 @@ internal sealed class Dashboard : W.Window
             caption.Children.Insert(0, Glyph((string)caption.Tag, ink, 21));
             ((C.TextBlock)caption.Children[1]).Foreground = ink;
             ((C.TextBlock)caption.Children[1]).FontWeight = selected ? W.FontWeights.SemiBold : W.FontWeights.Normal;
-            AutomationProperties.SetItemStatus(tab, selected ? "Выбрано" : "");
+            AutomationProperties.SetItemStatus(tab, selected ? UiText.Text("Выбрано") : "");
         }
     }
 
@@ -577,22 +578,22 @@ internal sealed class Dashboard : W.Window
         paired = identity.Paired;
         deviceName.Text = DeviceTitle();
         deviceName.ToolTip = deviceName.Text;
-        deviceStatus.Text = paired ? "Привязан по сети" : "Привязка по QR";
-        device.Content = paired ? "Управлять" : "Подключить";
+        deviceStatus.Text = paired ? UiText.Text("Привязан по сети") : UiText.Text("Привязка по QR");
+        device.Content = paired ? UiText.Text("Управлять") : UiText.Text("Подключить");
         AutomationProperties.SetName(device, (string)device.Content);
     }
 
-    private string DeviceTitle() => identity.PhoneName is { Length: > 0 } name ? name : "Телефон";
+    private string DeviceTitle() => identity.PhoneName is { Length: > 0 } name ? name : UiText.Text("Телефон");
 
     private void PaintTarget()
     {
         targetMode.Background = usePhone ? palette.Accent : palette.Raised;
         var foreground = usePhone ? palette.OnAccent : palette.Text;
         targetMode.Content = Glyph(usePhone ? Phone : Computer, foreground, 22);
-        var action = usePhone ? "Переключиться на ПК" : "Переключиться на телефон";
+        var action = usePhone ? UiText.Text("Переключиться на ПК") : UiText.Text("Переключиться на телефон");
         targetMode.ToolTip = action;
         AutomationProperties.SetName(targetMode, action);
-        AutomationProperties.SetItemStatus(targetMode, usePhone ? "Телефон" : "ПК");
+        AutomationProperties.SetItemStatus(targetMode, usePhone ? UiText.Text("Телефон") : UiText.Text("ПК"));
     }
 
     private void SelectTarget(bool remote)
@@ -628,7 +629,7 @@ internal sealed class Dashboard : W.Window
             if (current?.Id != pending.Id || nextPlaying == pending.Playing) pendingPhonePlay = null;
             else nextPlaying = pending.Playing;
         }
-        song.Text = current is null ? "Сейчас ничего не играет" : string.IsNullOrWhiteSpace(current.Title) ? current.App : current.Title;
+        song.Text = current is null ? UiText.Text("Сейчас ничего не играет") : string.IsNullOrWhiteSpace(current.Title) ? current.App : current.Title;
         details.Text = current is null ? "" :
             string.IsNullOrWhiteSpace(current.Artist) ? current.App : $"{current.Artist}  ·  {current.App}";
         details.Visibility = details.Text.Length == 0 ? W.Visibility.Collapsed : W.Visibility.Visible;
@@ -645,7 +646,7 @@ internal sealed class Dashboard : W.Window
         if (current?.Art != artKey)
         {
             artKey = current?.Art;
-            var data = string.IsNullOrEmpty(artKey) ? null : remote is null
+            var data = !identity.ShowArtwork || string.IsNullOrEmpty(artKey) ? null : remote is null
                 ? media.Artwork(artKey) : remote.Covers.GetValueOrDefault(artKey);
             try { artwork.Source = data is null ? null : Bitmap(data); }
             catch (Exception error) when (error is IOException or NotSupportedException or FileFormatException) { artwork.Source = null; }
@@ -661,12 +662,12 @@ internal sealed class Dashboard : W.Window
         if (button.Background == fill) return;
         button.Background = fill;
         button.Content = Glyph(icon, selected ? palette.OnAccent : palette.Text, 18);
-        AutomationProperties.SetItemStatus(button, selected ? "Выбрано" : "");
+        AutomationProperties.SetItemStatus(button, selected ? UiText.Text("Выбрано") : "");
     }
 
     private void BuildVolume(C.Grid playbackRow)
     {
-        volumeButton = IconButton("Громкость", "ic_volume", 40, 40, false, () => OpenVolume(!volumeButton.IsMouseOver));
+        volumeButton = IconButton(UiText.Text("Громкость"), "ic_volume", 40, 40, false, () => OpenVolume(!volumeButton.IsMouseOver));
         volumeButton.Tag = new W.CornerRadius(15);
         volumeButton.ToolTip = null;
         volumeButton.HorizontalAlignment = W.HorizontalAlignment.Right;
@@ -684,7 +685,7 @@ internal sealed class Dashboard : W.Window
         volumeSlider = new C.Slider { Minimum = 0, Maximum = 1, SmallChange = .02, LargeChange = .1,
             Height = 28, IsMoveToPointEnabled = true, Template = volumeTemplate,
             Foreground = palette.Accent, Background = palette.DockSelection };
-        AutomationProperties.SetName(volumeSlider, "Громкость");
+        AutomationProperties.SetName(volumeSlider, UiText.Text("Громкость"));
         volumeSlider.ValueChanged += (_, _) =>
         {
             volumeValue.Text = $"{Math.Round(volumeSlider.Value * 100)}%";
@@ -696,12 +697,14 @@ internal sealed class Dashboard : W.Window
         volumeRow.Children.Add(volumeSlider);
         var surface = new C.Border { Width = 176, Padding = new W.Thickness(12, 7, 12, 7),
             CornerRadius = new W.CornerRadius(16), Background = palette.Raised, Child = volumeRow };
+        var hoverArea = new C.Border { Background = M.Brushes.Transparent,
+            Padding = new W.Thickness(0, 10, 0, 10), Child = surface };
         volumePopup = new C.Primitives.Popup
         {
             Placement = C.Primitives.PlacementMode.Custom,
             PlacementTarget = volumeButton,
             AllowsTransparency = true,
-            Child = surface,
+            Child = hoverArea,
             CustomPopupPlacementCallback = (popupSize, buttonSize, _) =>
             [
                 new(new W.Point(buttonSize.Width - popupSize.Width, -popupSize.Height), C.Primitives.PopupPrimaryAxis.Vertical),
@@ -712,11 +715,11 @@ internal sealed class Dashboard : W.Window
         playbackRow.Children.Add(volumePopup);
         volumeButton.MouseEnter += (_, _) => OpenVolume(false);
         volumeButton.MouseLeave += (_, _) => volumeDismiss.Start();
-        surface.MouseEnter += (_, _) => volumeDismiss.Stop();
-        surface.MouseLeave += (_, _) => volumeDismiss.Start();
-        surface.LostMouseCapture += (_, _) => volumeDismiss.Start();
-        surface.LostKeyboardFocus += (_, _) => volumeDismiss.Start();
-        surface.PreviewKeyDown += (_, args) =>
+        hoverArea.MouseEnter += (_, _) => volumeDismiss.Stop();
+        hoverArea.MouseLeave += (_, _) => volumeDismiss.Start();
+        hoverArea.LostMouseCapture += (_, _) => volumeDismiss.Start();
+        hoverArea.LostKeyboardFocus += (_, _) => volumeDismiss.Start();
+        hoverArea.PreviewKeyDown += (_, args) =>
         {
             if (args.Key != I.Key.Escape) return;
             CloseVolume();
@@ -760,8 +763,8 @@ internal sealed class Dashboard : W.Window
 
     private void SetPlayIcon(bool nextPlaying, bool animate)
     {
-        AutomationProperties.SetName(toggle, nextPlaying ? "Пауза" : "Воспроизвести");
-        toggle.ToolTip = nextPlaying ? "Пауза" : "Воспроизвести";
+        AutomationProperties.SetName(toggle, nextPlaying ? UiText.Text("Пауза") : UiText.Text("Воспроизвести"));
+        toggle.ToolTip = nextPlaying ? UiText.Text("Пауза") : UiText.Text("Воспроизвести");
         string icon = nextPlaying ? Pause : Play;
         if (!Equals(playGlyph.Tag, icon))
         {
@@ -811,7 +814,7 @@ internal sealed class Dashboard : W.Window
         seeking = null;
         seek = new C.Slider { Minimum = 0, Maximum = 1, SmallChange = .01, LargeChange = .06, IsMoveToPointEnabled = true,
             Height = 27, Template = seekTemplate, Foreground = palette.Accent, Background = palette.Raised };
-        AutomationProperties.SetName(seek, "Перемотка трека");
+        AutomationProperties.SetName(seek, UiText.Text("Перемотка трека"));
         seek.AddHandler(PreviewMouseLeftButtonDownEvent, new I.MouseButtonEventHandler((_, _) => seeking = current), true);
         seek.AddHandler(PreviewMouseLeftButtonUpEvent, new I.MouseButtonEventHandler((_, _) =>
         {
@@ -945,16 +948,16 @@ internal sealed class Dashboard : W.Window
         root.Children.Add(overlay);
         var title = value switch
         {
-            Panel.Settings => "Настройки", Panel.Appearance => "Оформление", Panel.Color => "Свой цвет", Panel.Sources => "Источники",
-            Panel.Update => "Обновления", Panel.Diagnostics => "Диагностика",
-            Panel.Pairing when displayedAttempt?.Status == "pending" => "Это твой телефон?",
-            Panel.Pairing when displayedAttempt?.Status == "approved" => "Подтверждено",
-            Panel.Pairing when displayedAttempt?.Status == "denied" => "Запрос отклонён",
-            Panel.Device => "Телефон", _ => "Привязка телефона"
+            Panel.Settings => UiText.Text("Настройки"), Panel.Appearance => UiText.Text("Оформление"), Panel.Color => UiText.Text("Свой цвет"), Panel.Sources => UiText.Text("Источники"),
+            Panel.Update => UiText.Text("Обновления"), Panel.Diagnostics => UiText.Text("Диагностика"),
+            Panel.Pairing when displayedAttempt?.Status == "pending" => UiText.Text("Это твой телефон?"),
+            Panel.Pairing when displayedAttempt?.Status == "approved" => UiText.Text("Подтверждено"),
+            Panel.Pairing when displayedAttempt?.Status == "denied" => UiText.Text("Запрос отклонён"),
+            Panel.Device => UiText.Text("Телефон"), _ => UiText.Text("Привязка телефона")
         };
         var titleRow = new C.DockPanel();
         bool hasParent = value is Panel.Appearance or Panel.Color or Panel.Update or Panel.Diagnostics;
-        var close = IconButton(hasParent ? "Назад" : "Закрыть", hasParent ? "ic_left" : CloseGlyph, 39, 39, false, DismissPanel);
+        var close = IconButton(hasParent ? UiText.Text("Назад") : UiText.Text("Закрыть"), hasParent ? "ic_left" : CloseGlyph, 39, 39, false, DismissPanel);
         if (hasParent) close.Margin = new W.Thickness(0, 0, 11, 0);
         C.DockPanel.SetDock(close, hasParent ? C.Dock.Left : C.Dock.Right);
         titleRow.Children.Add(close);
@@ -990,19 +993,16 @@ internal sealed class Dashboard : W.Window
 
     private void Settings(C.StackPanel content)
     {
-        content.Children.Add(SettingsGroup(SettingsRow("Оформление", "Тема, цвет и плеер", "ic_appearance", "ic_right",
+        content.Children.Add(SettingsGroup(SettingsRow(UiText.Text("Оформление"), UiText.Text("Тема, цвет и плеер"), "ic_appearance", "ic_right",
             () => OpenPanel(Panel.Appearance))));
+        content.Children.Add(SettingsGroup(SettingsRow(UiText.Text("Язык"), identity.Language == "en" ? "English" : "Русский",
+            "ic_settings", "ic_right", ChangeLanguage)));
         Section(content, "Windows");
         var installed = File.Exists(Path.Combine(AppContext.BaseDirectory, "unins000.exe"));
-        var start = new C.CheckBox
-        {
-            Template = settingSwitchTemplate, MinHeight = 58, Cursor = I.Cursors.Hand,
-            Background = palette.Card, Foreground = palette.OnAccent, BorderBrush = palette.Raised,
-            Tag = palette.Accent, IsEnabled = installed, IsChecked = installed && StartsAtLogin(),
-            Content = SettingsLabel("Автозапуск", installed ? "" : "Доступен после установки", "ic_monitor")
-        };
-        AutomationProperties.SetName(start, "Автозапуск");
-        var errorNote = Text("Не удалось изменить автозапуск.", 13, palette.Muted);
+        var start = SettingsSwitch("Автозапуск", "ic_monitor", installed && StartsAtLogin(), null,
+            installed ? "" : UiText.Text("Доступен после установки"));
+        start.IsEnabled = installed;
+        var errorNote = Text(UiText.Text("Не удалось изменить автозапуск."), 13, palette.Muted);
         errorNote.Margin = new W.Thickness(8, 8, 0, 0);
         errorNote.Visibility = W.Visibility.Collapsed;
         start.Click += (_, _) =>
@@ -1018,15 +1018,20 @@ internal sealed class Dashboard : W.Window
                 errorNote.Visibility = W.Visibility.Visible;
             }
         };
-        content.Children.Add(SettingsGroup(start));
+        var windows = new C.StackPanel();
+        windows.Children.Add(start);
+        windows.Children.Add(SettingsSwitch("Снижать использование памяти в трее", "ic_monitor", identity.ReleaseWindow,
+            identity.SetReleaseWindow));
+        windows.Children.Add(SettingsSwitch("Меньше анимаций", "ic_appearance", identity.ReduceMotion, identity.SetReduceMotion));
+        content.Children.Add(SettingsGroup(windows));
         content.Children.Add(errorNote);
-        Section(content, "Приложение");
+        Section(content, UiText.Text("Приложение"));
         var appRows = new C.StackPanel();
-        var updates = SettingsRow("Обновления", $"Версия {ReleaseUpdates.CurrentVersion.ToString(3)}",
+        var updates = SettingsRow(UiText.Text("Обновления"), UiText.Text("Версия ") + ReleaseUpdates.CurrentVersion.ToString(3),
             "ic_retry", "ic_right", () => OpenPanel(Panel.Update));
         updates.Tag = new W.CornerRadius(21, 21, 8, 8);
         appRows.Children.Add(updates);
-        var diagnostics = SettingsRow("Диагностика", "Просмотреть или сохранить журнал",
+        var diagnostics = SettingsRow(UiText.Text("Диагностика"), UiText.Text("Просмотреть или сохранить журнал"),
             "ic_source", "ic_right", () => OpenPanel(Panel.Diagnostics));
         diagnostics.Tag = new W.CornerRadius(8, 8, 21, 21);
         diagnostics.Margin = new W.Thickness(0, 2, 0, 0);
@@ -1034,12 +1039,57 @@ internal sealed class Dashboard : W.Window
         content.Children.Add(SettingsGroup(appRows));
     }
 
+    private void ChangeLanguage()
+    {
+        identity.SetLanguage(identity.Language == "en" ? "ru" : "en");
+        UiText.Language = identity.Language;
+        ClosePanel(animate: false);
+        Build();
+        OpenPanel(Panel.Settings, animate: false);
+    }
+
+    private C.CheckBox SettingsSwitch(string title, string icon, bool value, Action<bool>? change, string detail = "")
+    {
+        var control = new C.CheckBox
+        {
+            Template = settingSwitchTemplate, MinHeight = 58, Cursor = I.Cursors.Hand,
+            Background = palette.Card, Foreground = palette.OnAccent, BorderBrush = palette.Raised,
+            Tag = palette.Accent, IsChecked = value, Content = SettingsLabel(UiText.Text(title), detail, icon)
+        };
+        AutomationProperties.SetName(control, UiText.Text(title));
+        void Move(bool animate)
+        {
+            if (control.Template.FindName("Knob", control) is not W.FrameworkElement knob ||
+                knob.RenderTransform is not M.TranslateTransform offset) return;
+            if (offset.IsFrozen) knob.RenderTransform = offset = offset.CloneCurrentValue();
+            double before = offset.X, target = control.IsChecked == true ? 20 : 0;
+            offset.BeginAnimation(M.TranslateTransform.XProperty, null);
+            offset.X = target;
+            if (animate && Motion)
+            {
+                var slide = Ease(before, target, 160);
+                slide.FillBehavior = A.FillBehavior.Stop;
+                offset.BeginAnimation(M.TranslateTransform.XProperty, slide);
+            }
+        }
+        control.Loaded += (_, _) => Move(false);
+        void Change(object sender, W.RoutedEventArgs args)
+        {
+            if (!control.IsLoaded) return;
+            change?.Invoke(control.IsChecked == true);
+            Move(true);
+        }
+        control.Checked += Change;
+        control.Unchecked += Change;
+        return control;
+    }
+
     private void PaintUpdateNotice()
     {
         updateNotice.Visibility = availableUpdate is null ? W.Visibility.Collapsed : W.Visibility.Visible;
         if (availableUpdate is { } release)
         {
-            updateNotice.Content = $"Доступно обновление {release.Version}";
+            updateNotice.Content = UiText.Text("Доступно обновление ") + release.Version;
             AutomationProperties.SetName(updateNotice, (string)updateNotice.Content);
         }
     }
@@ -1049,17 +1099,17 @@ internal sealed class Dashboard : W.Window
         if (checkingUpdates || installingUpdate) return;
         checkingUpdates = true;
         nextUpdateCheck = Environment.TickCount64 + (long)TimeSpan.FromHours(6).TotalMilliseconds;
-        updateStatus = "Проверяем GitHub…";
+        updateStatus = UiText.Text("Проверяем GitHub…");
         PaintUpdatePanel();
         try
         {
             availableUpdate = await ReleaseUpdates.Check(CancellationToken.None);
-            updateStatus = availableUpdate is null ? "Версия актуальна" : "";
+            updateStatus = availableUpdate is null ? UiText.Text("Версия актуальна") : "";
             Diagnostics.Record("updates", availableUpdate is null ? "up_to_date" : "update_available");
         }
         catch (Exception error)
         {
-            updateStatus = "Не удалось проверить обновления. Попробуй позже.";
+            updateStatus = UiText.Text("Не удалось проверить обновления. Попробуй позже.");
             Diagnostics.Record("updates", "check_failed", error);
         }
         finally
@@ -1074,7 +1124,7 @@ internal sealed class Dashboard : W.Window
     {
         if (Program.IsDevelopment)
         {
-            content.Children.Add(Text("Локальная сборка Dev", 15, palette.Text, true));
+            content.Children.Add(Text(UiText.Text("Локальная сборка Dev"), 15, palette.Text, true));
             return;
         }
         var summary = new C.StackPanel();
@@ -1105,14 +1155,14 @@ internal sealed class Dashboard : W.Window
             Child = summary, Background = palette.GroupInset, CornerRadius = new W.CornerRadius(20),
             Padding = new W.Thickness(13, 12, 13, 12), Margin = new W.Thickness(0, 0, 0, 12)
         });
-        installUpdateButton = Button("Скачать и установить", () =>
+        installUpdateButton = Button(UiText.Text("Скачать и установить"), () =>
         {
             if (availableUpdate is { } update) _ = InstallUpdate(update);
         }, primary: true);
         installUpdateButton.MinHeight = 49;
         installUpdateButton.Margin = new W.Thickness(0, 0, 0, 6);
         content.Children.Add(installUpdateButton);
-        checkUpdateButton = Button("Проверить обновления", () => _ = CheckUpdates());
+        checkUpdateButton = Button(UiText.Text("Проверить обновления"), () => _ = CheckUpdates());
         checkUpdateButton.MinHeight = 46;
         content.Children.Add(checkUpdateButton);
         PaintUpdatePanel();
@@ -1122,7 +1172,7 @@ internal sealed class Dashboard : W.Window
     {
         if (panel != Panel.Update) return;
         updateDetails.Text = updateStatus.Length > 0 ? updateStatus : availableUpdate is { } update
-            ? $"Доступна версия {update.Version}" : "Проверка через GitHub Releases";
+            ? UiText.Text("Доступна версия ") + update.Version : UiText.Text("Проверка через GitHub Releases");
         updateDetails.Foreground = availableUpdate is not null && updateStatus.Length == 0 ? palette.Accent : palette.Muted;
         checkUpdateButton.IsEnabled = installUpdateButton.IsEnabled = !checkingUpdates && !installingUpdate;
         installUpdateButton.Visibility = availableUpdate is null ? W.Visibility.Collapsed : W.Visibility.Visible;
@@ -1132,17 +1182,17 @@ internal sealed class Dashboard : W.Window
     {
         if (installingUpdate) return;
         installingUpdate = true;
-        updateStatus = "Загружаем и проверяем установщик…";
+        updateStatus = UiText.Text("Загружаем и проверяем установщик…");
         PaintUpdatePanel();
         try
         {
             await ReleaseUpdates.Install(update, CancellationToken.None);
-            updateStatus = "Продолжи в установщике Windows.";
+            updateStatus = UiText.Text("Продолжи в установщике Windows.");
             Diagnostics.Record("updates", "installer_started");
         }
         catch (Exception error)
         {
-            updateStatus = "Не удалось запустить обновление.";
+            updateStatus = UiText.Text("Не удалось запустить обновление.");
             Diagnostics.Record("updates", "install_failed", error);
         }
         finally
@@ -1160,7 +1210,7 @@ internal sealed class Dashboard : W.Window
         {
             log = "";
         }
-        var snapshot = Text(log.Length == 0 ? "Журнал пока пуст." : "Последние события", 14, palette.Muted);
+        var snapshot = Text(log.Length == 0 ? UiText.Text("Журнал пока пуст.") : UiText.Text("Последние события"), 14, palette.Muted);
         content.Children.Add(snapshot);
         if (log.Length == 0) return;
         content.Children.Add(new C.TextBox
@@ -1170,14 +1220,14 @@ internal sealed class Dashboard : W.Window
             Background = palette.Background, Foreground = palette.Text, BorderThickness = new W.Thickness(0),
             Margin = new W.Thickness(0, 8, 0, 10), Padding = new W.Thickness(8)
         });
-        content.Children.Add(Button("Сохранить журнал", () =>
+        content.Children.Add(Button(UiText.Text("Сохранить журнал"), () =>
         {
             var save = new Microsoft.Win32.SaveFileDialog { FileName = "CueRelay-Diagnostics.jsonl", Filter = "JSON Lines (*.jsonl)|*.jsonl" };
             if (save.ShowDialog(this) != true) return;
-            try { File.WriteAllText(save.FileName, log); snapshot.Text = "Журнал сохранён."; }
+            try { File.WriteAllText(save.FileName, log); snapshot.Text = UiText.Text("Журнал сохранён."); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
-                snapshot.Text = "Не удалось сохранить журнал.";
+                snapshot.Text = UiText.Text("Не удалось сохранить журнал.");
                 Diagnostics.Record("diagnostics", "export_failed", error);
             }
         }));
@@ -1186,33 +1236,42 @@ internal sealed class Dashboard : W.Window
     private void AppearanceSettings(C.StackPanel content)
     {
         content.Children.Add(ThemePreview());
-        Section(content, "Тема");
+        Section(content, UiText.Text("Тема"));
         var modes = new C.StackPanel();
-        modes.Children.Add(ThemeOption("system", "Как на устройстве", "ic_monitor", new W.CornerRadius(21, 21, 8, 8)));
-        modes.Children.Add(ThemeOption("light", "Светлая", "ic_sun", new W.CornerRadius(8)));
-        modes.Children.Add(ThemeOption("dark", "Тёмная", "ic_moon", new W.CornerRadius(8, 8, 21, 21)));
+        modes.Children.Add(ThemeOption("system", UiText.Text("Как на устройстве"), "ic_monitor", new W.CornerRadius(21, 21, 8, 8)));
+        modes.Children.Add(ThemeOption("light", UiText.Text("Светлая"), "ic_sun", new W.CornerRadius(8)));
+        modes.Children.Add(ThemeOption("dark", UiText.Text("Тёмная"), "ic_moon", new W.CornerRadius(8, 8, 21, 21)));
         content.Children.Add(SettingsGroup(modes));
-        Section(content, "Акцентный цвет");
+        Section(content, UiText.Text("Акцентный цвет"));
         var colors = new C.Primitives.UniformGrid { Rows = 1 };
-        foreach (var (key, name) in new[] { ("green", "Зелёный"), ("blue", "Голубой"),
-            ("violet", "Сиреневый"), ("amber", "Янтарный") })
+        foreach (var (key, name) in new[] { ("green", UiText.Text("Зелёный")), ("blue", UiText.Text("Голубой")),
+            ("violet", UiText.Text("Сиреневый")), ("amber", UiText.Text("Янтарный")) })
         {
             int fill = Palette.Seed(key);
             colors.Children.Add(ColorChoice(name, Palette.Brush(fill), identity.Accent == key, false,
                 () => ChooseAppearance(() => identity.SetAccent(key))));
         }
         bool custom = identity.Accent.StartsWith('#');
-        colors.Children.Add(ColorChoice("Свой цвет", custom ? Palette.Brush(Palette.Seed(identity.Accent)) : palette.Raised,
+        colors.Children.Add(ColorChoice(UiText.Text("Свой цвет"), custom ? Palette.Brush(Palette.Seed(identity.Accent)) : palette.Raised,
             custom, true, () => OpenPanel(Panel.Color)));
         content.Children.Add(new C.Border { Background = palette.GroupInset, CornerRadius = new W.CornerRadius(24),
             Padding = new W.Thickness(7, 11, 7, 11), Child = colors });
-        Section(content, "Плеер");
-        content.Children.Add(SettingsGroup(SettingsRow("Устройство при запуске", identity.StartWithPhone ? "Телефон" : "ПК",
+        content.Children.Add(SettingsGroup(SettingsSwitch("Синхронизировать тему и цвет", "ic_auto", identity.SyncAppearance,
+            enabled => { identity.SetSyncAppearance(enabled); media.RefreshAppearance(); })));
+        Section(content, UiText.Text("Плеер"));
+        content.Children.Add(SettingsGroup(SettingsRow(UiText.Text("Устройство при запуске"), identity.StartWithPhone ? UiText.Text("Телефон") : UiText.Text("ПК"),
             "ic_monitor", "ic_right", () =>
             {
                 identity.SetStartWithPhone(!identity.StartWithPhone);
                 OpenPanel(Panel.Appearance, animate: false);
             })));
+        content.Children.Add(SettingsGroup(SettingsSwitch("Показывать обложки", "ic_image", identity.ShowArtwork, enabled =>
+        {
+            identity.SetShowArtwork(enabled);
+            artKey = "\0";
+            revision = -1;
+            ReadMedia(animate: false);
+        })));
     }
 
     private C.Button ThemeOption(string key, string name, string icon, W.CornerRadius radius)
@@ -1222,7 +1281,7 @@ internal sealed class Dashboard : W.Window
             () => ChooseAppearance(() => identity.SetTheme(key)), selected);
         row.Tag = radius;
         row.Margin = new W.Thickness(0, key == "system" ? 0 : 2, 0, 0);
-        AutomationProperties.SetItemStatus(row, selected ? "Выбрано" : "");
+        AutomationProperties.SetItemStatus(row, selected ? UiText.Text("Выбрано") : "");
         return row;
     }
 
@@ -1278,7 +1337,7 @@ internal sealed class Dashboard : W.Window
             Background = surface, Child = custom ? Glyph("ic_add", ink, 19) : null };
         button.Content = new C.Border { Width = 47, Height = 47, CornerRadius = new W.CornerRadius(24),
             BorderThickness = new W.Thickness(selected ? 2 : 0), BorderBrush = palette.Accent, Child = disk };
-        AutomationProperties.SetItemStatus(button, selected ? "Выбрано" : "");
+        AutomationProperties.SetItemStatus(button, selected ? UiText.Text("Выбрано") : "");
         SpringPress(button);
         return button;
     }
@@ -1332,10 +1391,10 @@ internal sealed class Dashboard : W.Window
         var plane = new ColorField(false) { Height = 155, Focusable = true, Cursor = I.Cursors.Cross };
         var strip = new ColorField(true) { Height = 28, Focusable = true, Cursor = I.Cursors.Hand,
             Margin = new W.Thickness(0, 9, 0, 0) };
-        AutomationProperties.SetName(plane, "Насыщенность и яркость");
-        AutomationProperties.SetHelpText(plane, "Стрелки влево и вправо меняют насыщенность, вверх и вниз — яркость.");
-        AutomationProperties.SetName(strip, "Тон");
-        AutomationProperties.SetHelpText(strip, "Стрелки влево и вправо меняют тон.");
+        AutomationProperties.SetName(plane, UiText.Text("Насыщенность и яркость"));
+        AutomationProperties.SetHelpText(plane, UiText.Text("Стрелки влево и вправо меняют насыщенность, вверх и вниз — яркость."));
+        AutomationProperties.SetName(strip, UiText.Text("Тон"));
+        AutomationProperties.SetHelpText(strip, UiText.Text("Стрелки влево и вправо меняют тон."));
         var picker = new C.StackPanel();
         picker.Children.Add(plane);
         picker.Children.Add(strip);
@@ -1347,7 +1406,7 @@ internal sealed class Dashboard : W.Window
         var hex = new C.TextBox { Text = $"#{seed:X6}", MaxLength = 7, FontSize = 16,
             Foreground = palette.Text, Background = M.Brushes.Transparent, BorderThickness = new W.Thickness(0),
             VerticalContentAlignment = W.VerticalAlignment.Center, CaretBrush = palette.Text };
-        AutomationProperties.SetName(hex, "Цвет HEX");
+        AutomationProperties.SetName(hex, UiText.Text("Цвет HEX"));
         var hexRow = new C.DockPanel();
         C.DockPanel.SetDock(sample, C.Dock.Left);
         hexRow.Children.Add(sample);
@@ -1365,7 +1424,7 @@ internal sealed class Dashboard : W.Window
             OpenPanel(Panel.Appearance, animate: false);
             ChooseAppearance(() => identity.SetAccent($"#{selected:X6}"));
         }
-        var apply = Button("Применить", Apply, primary: true);
+        var apply = Button(UiText.Text("Применить"), Apply, primary: true);
         apply.MinHeight = 44;
         apply.Margin = new W.Thickness(0, 10, 0, 0);
         content.Children.Add(apply);
@@ -1436,8 +1495,15 @@ internal sealed class Dashboard : W.Window
         var selected = usePhone ? chosenPhoneSource : chosenSource;
         var sources = usePhone ? phone.Current.Sources : media.Current.Sources;
         bool automatic = selected is null || !sources.Any(source => source.Id == selected);
-        content.Children.Add(SettingsGroup(SettingsRow("Автовыбор", usePhone ? "Текущая сессия Android" : "Текущая сессия Windows",
+        content.Children.Add(SettingsGroup(SettingsRow(UiText.Text("Автовыбор"), usePhone ? UiText.Text("Текущая сессия Android") : UiText.Text("Текущая сессия Windows"),
             "ic_auto", automatic ? "ic_check" : "ic_right", () => Set(null), automatic)));
+        if (sources.Length == 0)
+        {
+            var empty = Text(UiText.Text("Нет активных источников"), 14, palette.Muted);
+            empty.Margin = new W.Thickness(12);
+            content.Children.Add(SettingsGroup(empty));
+            return;
+        }
         var grid = new C.Primitives.UniformGrid { Columns = 2, Margin = new W.Thickness(-4, 10, -4, 0) };
         foreach (var source in sources)
         {
@@ -1450,7 +1516,7 @@ internal sealed class Dashboard : W.Window
             tile.MinHeight = 110;
             tile.HorizontalContentAlignment = W.HorizontalAlignment.Stretch;
             tile.Background = active ? palette.DockSelection : palette.GroupInset;
-            AutomationProperties.SetItemStatus(tile, active ? "Выбрано" : "");
+            AutomationProperties.SetItemStatus(tile, active ? UiText.Text("Выбрано") : "");
             var labels = new C.StackPanel();
             var icon = Glyph(active ? "ic_check" : "ic_note", active ? palette.Accent : palette.Muted, 20);
             icon.HorizontalAlignment = W.HorizontalAlignment.Left;
@@ -1472,11 +1538,11 @@ internal sealed class Dashboard : W.Window
     private void ManageDevice(C.StackPanel content, bool focusUnpair)
     {
         content.Children.Add(Text(DeviceTitle(), 17, palette.Text, true));
-        content.Children.Add(Text("Доступ к воспроизведению по локальной сети.", 14, palette.Muted));
-        Section(content, "Доступ");
-        content.Children.Add(Row("Плеер телефона", "Открыть управление Android", false, () => { ClosePanel(); SelectTarget(true); }));
-        content.Children.Add(Row("Заменить телефон", "После новой привязки прежний доступ будет отозван", false, StartPairing));
-        var unpair = Row("Отвязать телефон", "", false, () =>
+        content.Children.Add(Text(UiText.Text("Доступ к воспроизведению по локальной сети."), 14, palette.Muted));
+        Section(content, UiText.Text("Доступ"));
+        content.Children.Add(Row(UiText.Text("Плеер телефона"), UiText.Text("Открыть управление Android"), false, () => { ClosePanel(); SelectTarget(true); }));
+        content.Children.Add(Row(UiText.Text("Заменить телефон"), UiText.Text("После новой привязки прежний доступ будет отозван"), false, StartPairing));
+        var unpair = Row(UiText.Text("Отвязать телефон"), "", false, () =>
         {
             if (identity.PairKey is not { } pairKey) return;
             unpairTarget = (pairKey, DeviceTitle());
@@ -1493,7 +1559,7 @@ internal sealed class Dashboard : W.Window
         card.HorizontalAlignment = W.HorizontalAlignment.Center;
         card.VerticalAlignment = W.VerticalAlignment.Center;
         I.KeyboardNavigation.SetTabNavigation(card, I.KeyboardNavigationMode.Cycle);
-        AutomationProperties.SetName(card, "Подтверждение отвязки телефона");
+        AutomationProperties.SetName(card, UiText.Text("Подтверждение отвязки телефона"));
         var content = new C.StackPanel();
         card.Child = content;
         content.Children.Add(new C.Border
@@ -1502,19 +1568,19 @@ internal sealed class Dashboard : W.Window
             HorizontalAlignment = W.HorizontalAlignment.Left,
             Child = Glyph("ic_unlink", palette.Accent, 23)
         });
-        var heading = Text("Отвязать телефон?", 23, palette.Text, true);
+        var heading = Text(UiText.Text("Отвязать телефон?"), 23, palette.Text, true);
         heading.Margin = new W.Thickness(0, 12, 0, 6);
         content.Children.Add(heading);
-        var message = Text($"«{deviceTitle}» потеряет доступ к управлению воспроизведением. Для повторного подключения понадобится новая привязка.",
+        var message = Text(string.Format(UiText.Text("«{0}» потеряет доступ к управлению воспроизведением. Для повторного подключения понадобится новая привязка."), deviceTitle),
             14, palette.Muted);
         message.TextWrapping = W.TextWrapping.Wrap;
         content.Children.Add(message);
 
         var actions = new C.Primitives.UniformGrid { Rows = 1, Margin = new W.Thickness(0, 20, 0, 0) };
-        var cancel = Button("Отмена", DismissPanel);
+        var cancel = Button(UiText.Text("Отмена"), DismissPanel);
         cancel.Margin = new W.Thickness(0, 0, 4, 0);
         cancel.Loaded += (_, _) => { if (panel == Panel.Unpair && ReferenceEquals(drawer, card)) cancel.Focus(); };
-        var confirm = Button("Отвязать", () =>
+        var confirm = Button(UiText.Text("Отвязать"), () =>
         {
             if (panel != Panel.Unpair) return;
             if (!identity.Forget(expectedPairKey: pairKey)) { DismissPanel(); return; }
@@ -1547,8 +1613,8 @@ internal sealed class Dashboard : W.Window
             PairConfirmation(content, pending);
             return;
         }
-        var note = Text(payload is null ? "Подключи ПК к домашней сети или обнови код." :
-            "Открой приложение CueRelay на телефоне и отсканируй код. Код действует три минуты.",
+        var note = Text(payload is null ? UiText.Text("Подключи ПК к домашней сети или обнови код.") :
+            UiText.Text("Открой приложение CueRelay на телефоне и отсканируй код. Код действует три минуты."),
             14, palette.Muted);
         note.TextWrapping = W.TextWrapping.Wrap;
         content.Children.Add(note);
@@ -1558,14 +1624,14 @@ internal sealed class Dashboard : W.Window
             using var data = generator.CreateQrCode(payload, QRCodeGenerator.ECCLevel.M);
             using var png = new PngByteQRCode(data);
             var image = new C.Image { Source = Bitmap(png.GetGraphic(6)), Width = 209, Height = 209 };
-            AutomationProperties.SetName(image, "QR-код привязки");
+            AutomationProperties.SetName(image, UiText.Text("QR-код привязки"));
             M.RenderOptions.SetBitmapScalingMode(image, M.BitmapScalingMode.NearestNeighbor);
             content.Children.Add(new C.Border
             {
                 Background = M.Brushes.White, CornerRadius = new W.CornerRadius(17), Width = 225, Height = 225,
                 Margin = new W.Thickness(0, 14, 0, 12), Child = image,
             });
-            content.Children.Add(Row("Скопировать временный код", "", false, () =>
+            content.Children.Add(Row(UiText.Text("Скопировать временный код"), "", false, () =>
             {
                 if (payload is null) return;
                 try
@@ -1574,7 +1640,7 @@ internal sealed class Dashboard : W.Window
                     invite.SetData("ExcludeClipboardContentFromMonitorProcessing", new MemoryStream(new byte[4]));
                     W.Clipboard.SetDataObject(invite, copy: true);
                     pairClipboardSequence = GetClipboardSequenceNumber();
-                    note.Text = "Временный код скопирован на 60 секунд.";
+                    note.Text = UiText.Text("Временный код скопирован на 60 секунд.");
                     var clear = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
                     uint sequence = pairClipboardSequence;
                     clear.Tick += (_, _) =>
@@ -1584,10 +1650,10 @@ internal sealed class Dashboard : W.Window
                     };
                     clear.Start();
                 }
-                catch (ExternalException) { note.Text = "Не удалось скопировать код. Попробуй ещё раз."; }
+                catch (ExternalException) { note.Text = UiText.Text("Не удалось скопировать код. Попробуй ещё раз."); }
             }));
         }
-        content.Children.Add(Row("Обновить QR-код", "", false, StartPairing));
+        content.Children.Add(Row(UiText.Text("Обновить QR-код"), "", false, StartPairing));
     }
 
     private void PairConfirmation(C.StackPanel content, Identity.PairAttempt attempt)
@@ -1604,7 +1670,7 @@ internal sealed class Dashboard : W.Window
             CornerRadius = new W.CornerRadius(19), Padding = new W.Thickness(12, 10, 12, 10) });
 
         var code = new C.StackPanel();
-        var caption = Text("Код проверки", 13, palette.Text, true);
+        var caption = Text(UiText.Text("Код проверки"), 13, palette.Text, true);
         caption.TextAlignment = W.TextAlignment.Center;
         code.Children.Add(caption);
         var digits = Text(attempt.Check.Insert(3, " "), 34, palette.Text, true);
@@ -1615,27 +1681,27 @@ internal sealed class Dashboard : W.Window
 
         var message = Text(attempt.Status switch
         {
-            "approved" => "На телефоне нажми «Код совпадает», если ещё не нажал, и дождись подключения.",
-            "denied" => "Можно начать привязку заново.",
-            _ => "Сверь цифры с кодом в CueRelay на телефоне."
+            "approved" => UiText.Text("На телефоне нажми «Код совпадает», если ещё не нажал, и дождись подключения."),
+            "denied" => UiText.Text("Можно начать привязку заново."),
+            _ => UiText.Text("Сверь цифры с кодом в CueRelay на телефоне.")
         }, 15, palette.Muted);
         message.TextWrapping = W.TextWrapping.Wrap;
         content.Children.Add(message);
 
         if (attempt.Status == "pending")
         {
-            var approve = Button("Это мой телефон", () =>
+            var approve = Button(UiText.Text("Это мой телефон"), () =>
             {
                 try { identity.DecidePair(attempt.Id, true); }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
-                    message.Text = "Windows не смогла сохранить привязку. Проверь доступ к папке данных CueRelay и повтори.";
+                    message.Text = UiText.Text("Windows не смогла сохранить привязку. Проверь доступ к папке данных CueRelay и повтори.");
                 }
             }, primary: true);
             approve.Margin = new W.Thickness(0, 12, 0, 5);
             approve.MinHeight = 49;
             approve.Tag = new W.CornerRadius(17);
-            var reject = Button("Это не мой телефон", () => identity.DecidePair(attempt.Id, false));
+            var reject = Button(UiText.Text("Это не мой телефон"), () => identity.DecidePair(attempt.Id, false));
             reject.MinHeight = 46;
             reject.Tag = new W.CornerRadius(17);
             SpringPress(approve);
@@ -1645,7 +1711,7 @@ internal sealed class Dashboard : W.Window
         }
         else
         {
-            var retry = Button("Новый QR-код", StartPairing);
+            var retry = Button(UiText.Text("Новый QR-код"), StartPairing);
             retry.Margin = new W.Thickness(0, 12, 0, 0);
             retry.MinHeight = 46;
             retry.Tag = new W.CornerRadius(17);
@@ -1763,7 +1829,7 @@ internal sealed class Dashboard : W.Window
 
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
-    private bool Motion => W.SystemParameters.ClientAreaAnimation;
+    private bool Motion => !identity.ReduceMotion && W.SystemParameters.ClientAreaAnimation;
     private static A.DoubleAnimation Ease(double from, double to, int milliseconds) =>
         new(from, to, new W.Duration(TimeSpan.FromMilliseconds(milliseconds))) { EasingFunction = new A.CubicEase { EasingMode = A.EasingMode.EaseOut } };
 

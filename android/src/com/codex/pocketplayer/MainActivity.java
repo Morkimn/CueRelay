@@ -22,6 +22,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewAnimationUtils;
@@ -51,6 +52,7 @@ public final class MainActivity extends Activity {
     private static final int SHEET_SIDE_INSET = 18, SHEET_BOTTOM_INSET = 9;
     private static final int DOCK_HEIGHT = 64, DOCK_BOTTOM = 8;
     private static final int WIDGET_BUTTON_SIZE = 54, WIDGET_BUTTON_GAP = 24;
+    private static final String VOLUME_KEYS = "remote-volume-keys";
     private Float dockReleaseX;
     private enum Page {
         PLAYER("Плеер", R.drawable.ic_note),
@@ -85,7 +87,11 @@ public final class MainActivity extends Activity {
     private PopupWindow volumePopup;
     private TextView volumePercent;
     private boolean adjustingVolume;
+    private int pendingVolume = -1;
     private long volumeQuietUntil;
+    private float swipeX, swipeY;
+    private boolean pageSwipe, volumeKeyHeld;
+    private View dockSurface;
     private LinearLayout timelinePanel;
     private TextView elapsed, duration;
     private Playback.Source seeking;
@@ -103,8 +109,8 @@ public final class MainActivity extends Activity {
     private Point tapOrigin, appearanceOrigin;
     private final Runnable sendVolume = () -> {
         Playback state = PhoneLink.playback;
-        if (state != null && state.volume >= 0)
-            PhoneLink.start(this, "volume", Integer.toString(volume.getProgress()));
+        if (state != null && state.volume >= 0 && pendingVolume >= 0)
+            PhoneLink.start(this, "volume", Integer.toString(pendingVolume));
     };
     private final Runnable ticker = new Runnable() {
         @Override public void run() { refresh(); ui.postDelayed(this, 130); }
@@ -134,6 +140,7 @@ public final class MainActivity extends Activity {
         ui.removeCallbacks(ticker);
         ui.removeCallbacks(sendVolume);
         adjustingVolume = false;
+        volumeKeyHeld = false;
         super.onPause();
     }
     @Override public void onDestroy() {
@@ -155,7 +162,7 @@ public final class MainActivity extends Activity {
                 View previous = sheetSurface.getChildAt(sheetSurface.getChildCount() - 1);
                 int scrollY = previous.getTag() instanceof ScrollView ? ((ScrollView) previous.getTag()).getScrollY() : 0;
                 boolean appearance = settingsSheet == SettingsSheet.APPEARANCE;
-                FrameLayout next = sheetFrame(appearance ? "Оформление" : "Настройки",
+                FrameLayout next = sheetFrame(appearance ? tr("Оформление") : tr("Настройки"),
                     appearance ? this::appearanceContent : this::settingsContent,
                     appearance ? this::settings : this::closePanel, appearance);
                 ScrollView scroll = (ScrollView) next.getTag();
@@ -175,6 +182,61 @@ public final class MainActivity extends Activity {
     @Override public void onBackPressed() {
         if (page != Page.PLAYER) navigate(Page.PLAYER);
         else super.onBackPressed();
+    }
+
+    @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        int key = event.getKeyCode();
+        if (key != KeyEvent.KEYCODE_VOLUME_UP && key != KeyEvent.KEYCODE_VOLUME_DOWN)
+            return super.dispatchKeyEvent(event);
+        if (event.getAction() == KeyEvent.ACTION_UP && volumeKeyHeld) {
+            volumeKeyHeld = false;
+            return true;
+        }
+        Playback state = PhoneLink.playback;
+        if (event.getAction() != KeyEvent.ACTION_DOWN || !paired || state == null || state.volume < 0 ||
+            !Pairing.prefs(this).getBoolean(VOLUME_KEYS, false)) return super.dispatchKeyEvent(event);
+        volumeKeyHeld = true;
+        int level = android.os.SystemClock.elapsedRealtime() < volumeQuietUntil && pendingVolume >= 0 ? pendingVolume : state.volume;
+        queueVolume(Math.max(0, Math.min(100, level + (key == KeyEvent.KEYCODE_VOLUME_UP ? 5 : -5))));
+        if (page == Page.PLAYER) volume.setProgress(pendingVolume);
+        return true;
+    }
+
+    @Override public boolean dispatchTouchEvent(MotionEvent event) {
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            swipeX = event.getRawX();
+            swipeY = event.getRawY();
+            pageSwipe = paired && sheet == null && (volumePopup == null || !volumePopup.isShowing()) &&
+                within(pageScroll, swipeX, swipeY) && !within(dockSurface, swipeX, swipeY) &&
+                (page != Page.PLAYER || !within(seek, swipeX, swipeY));
+        } else if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN) {
+            pageSwipe = false;
+        } else if (action == MotionEvent.ACTION_UP && pageSwipe) {
+            pageSwipe = false;
+            float dx = event.getRawX() - swipeX, dy = event.getRawY() - swipeY;
+            int step = dx < 0 ? 1 : -1;
+            if (getResources().getConfiguration().getLayoutDirection() == View.LAYOUT_DIRECTION_RTL) step = -step;
+            int next = page.ordinal() + step;
+            if (Math.abs(dx) >= dp(70) && Math.abs(dx) > Math.abs(dy) * 1.6f &&
+                next >= 0 && next < Page.values().length) {
+                MotionEvent cancel = MotionEvent.obtain(event);
+                cancel.setAction(MotionEvent.ACTION_CANCEL);
+                super.dispatchTouchEvent(cancel);
+                cancel.recycle();
+                navigate(Page.values()[next]);
+                return true;
+            }
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    private static boolean within(View view, float x, float y) {
+        if (view == null || !view.isShown()) return false;
+        int[] location = new int[2];
+        view.getLocationOnScreen(location);
+        return x >= location[0] && x < location[0] + view.getWidth() &&
+            y >= location[1] && y < location[1] + view.getHeight();
     }
 
     private void navigate(Page target) {
@@ -252,7 +314,7 @@ public final class MainActivity extends Activity {
             logoSize.setMarginEnd(dp(10));
             header.addView(logo, logoSize);
         }
-        TextView name = label(playerPage ? BuildProfile.TITLE : page.label, playerPage ? 34 : 36, text, true);
+        TextView name = label(playerPage ? BuildProfile.TITLE : tr(page.label), playerPage ? 34 : 36, text, true);
         name.setLetterSpacing(-0.027f);
         header.addView(name, paired && playerPage ? new LinearLayout.LayoutParams(-2, -2)
             : new LinearLayout.LayoutParams(0, -2, 1));
@@ -269,7 +331,7 @@ public final class MainActivity extends Activity {
             header.addView(statusSlot, statusSize);
         }
         if (!paired) {
-            ImageView settings = icon(R.drawable.ic_settings, "Настройки", text, 11);
+            ImageView settings = icon(R.drawable.ic_settings, tr("Настройки"), text, 11);
             settings.setBackground(ripple(panel, 22));
             settings.setOnClickListener(v -> settings());
             header.addView(settings, new LinearLayout.LayoutParams(dp(46), dp(46)));
@@ -290,7 +352,7 @@ public final class MainActivity extends Activity {
             renderPairing();
         } else if (page == Page.PLAYER) {
             renderPlayer();
-            ImageView add = icon(R.drawable.ic_add, "Добавить виджет", onAccent, 15);
+            ImageView add = icon(R.drawable.ic_add, tr("Добавить виджет"), onAccent, 15);
             add.setBackground(ripple(accent, 20));
             add.setElevation(dp(4));
             add.setOnClickListener(v -> gallery());
@@ -326,6 +388,7 @@ public final class MainActivity extends Activity {
 
     private void addDock(FrameLayout root, Page from) {
         FrameLayout dock = new FrameLayout(this);
+        dockSurface = dock;
         dock.setBackground(shape(raised, 30));
         dock.setElevation(dp(6));
         FrameLayout.LayoutParams position = new FrameLayout.LayoutParams(-1, dp(DOCK_HEIGHT), Gravity.BOTTOM);
@@ -344,14 +407,14 @@ public final class MainActivity extends Activity {
             LinearLayout button = column();
             button.setGravity(Gravity.CENTER);
             button.setSelected(selected);
-            button.setContentDescription(destination.label);
+            button.setContentDescription(tr(destination.label));
             boolean rtl = getResources().getConfiguration().getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
             boolean first = destination.ordinal() == 0, last = destination.ordinal() == Page.values().length - 1;
             button.setBackground(ripple(corners(Color.TRANSPARENT, (rtl ? last : first) ? 24 : 13,
                 (rtl ? first : last) ? 24 : 13, (rtl ? first : last) ? 24 : 13, (rtl ? last : first) ? 24 : 13)));
             button.addView(icon(destination.icon, null, tint, 0), new LinearLayout.LayoutParams(dp(21), dp(21)));
             gap(button, 2);
-            TextView caption = label(destination.label, 12, tint, selected);
+            TextView caption = label(tr(destination.label), 12, tint, selected);
             caption.setGravity(Gravity.CENTER);
             caption.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             button.addView(caption, new LinearLayout.LayoutParams(-1, -2));
@@ -479,13 +542,13 @@ public final class MainActivity extends Activity {
         ImageView logo = icon(R.drawable.ic_app, "CueRelay", 0, 0);
         card.addView(logo, new LinearLayout.LayoutParams(dp(62), dp(62)));
         gap(card, 18);
-        card.addView(label("Подключи компьютер", 24, text, true));
+        card.addView(label(tr("Подключи компьютер"), 24, text, true));
         gap(card, 8);
-        card.addView(label("Открой CueRelay в Windows и отсканируй QR-код. Подключи оба устройства к одной сети.", 16, dim, false));
+        card.addView(label(tr("Открой CueRelay в Windows и отсканируй QR-код. Подключи оба устройства к одной сети."), 16, dim, false));
         gap(card, 22);
-        card.addView(button("Сканировать QR-код", true, this::requestScan), full(52));
+        card.addView(button(tr("Сканировать QR-код"), true, this::requestScan), full(52));
         gap(card, 8);
-        card.addView(button("Вставить код", false, this::pasteCode), full(48));
+        card.addView(button(tr("Вставить код"), false, this::pasteCode), full(48));
     }
 
     private void renderPlayer() {
@@ -497,7 +560,7 @@ public final class MainActivity extends Activity {
             new int[] {Appearance.mix(raised, accent, .23), raised}));
         ((GradientDrawable) artwork.getBackground()).setCornerRadius(dp(27));
         artwork.setClipToOutline(true);
-        artwork.setContentDescription("Обложка");
+        artwork.setContentDescription(tr("Обложка"));
         card.addView(artwork, new LinearLayout.LayoutParams(dp(166), dp(166)));
 
         gap(card, 15);
@@ -521,7 +584,7 @@ public final class MainActivity extends Activity {
         controls.setGravity(Gravity.CENTER);
         boolean compactControls = getResources().getConfiguration().screenWidthDp < 340;
         int skipWidth = compactControls ? 44 : 46;
-        previous = icon(R.drawable.ic_previous, "Предыдущий трек", text, 13);
+        previous = icon(R.drawable.ic_previous, tr("Предыдущий трек"), text, 13);
         previous.setBackground(ripple(raised, 17));
         previous.setOnClickListener(v -> action("previous"));
         LinearLayout.LayoutParams previousSize = new LinearLayout.LayoutParams(dp(skipWidth), dp(48));
@@ -541,7 +604,7 @@ public final class MainActivity extends Activity {
         int playGap = dp(compactControls ? 5 : 7);
         main.setMargins(playGap, 0, playGap, 0);
         controls.addView(toggle, main);
-        next = icon(R.drawable.ic_next, "Следующий трек", text, 13);
+        next = icon(R.drawable.ic_next, tr("Следующий трек"), text, 13);
         next.setBackground(ripple(raised, 17));
         next.setOnClickListener(v -> action("next"));
         controls.addView(next, new LinearLayout.LayoutParams(dp(skipWidth), dp(48)));
@@ -553,7 +616,7 @@ public final class MainActivity extends Activity {
 
     private void addVolume(FrameLayout playbackRow) {
         adjustingVolume = false;
-        volumeButton = icon(R.drawable.ic_volume, "Громкость компьютера", text, 11);
+        volumeButton = icon(R.drawable.ic_volume, tr("Громкость компьютера"), text, 11);
         volumeButton.setBackground(ripple(raised, 15));
         volumeButton.setVisibility(View.GONE);
         playbackRow.addView(volumeButton, new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.END | Gravity.CENTER_VERTICAL));
@@ -562,7 +625,7 @@ public final class MainActivity extends Activity {
         volumeRow.setPadding(dp(9), 0, dp(12), 0);
         volume = new SeekBar(this);
         volume.setMax(100);
-        volume.setContentDescription("Громкость компьютера");
+        volume.setContentDescription(tr("Громкость компьютера"));
         volume.setProgressTintList(ColorStateList.valueOf(accent));
         volume.setProgressBackgroundTintList(ColorStateList.valueOf(Appearance.mix(raised, dim, .35)));
         volume.setThumbTintList(ColorStateList.valueOf(accent));
@@ -578,7 +641,7 @@ public final class MainActivity extends Activity {
         volumeButton.setOnClickListener(v -> {
             if (volumePopup.isShowing()) volumePopup.dismiss();
             else volumePopup.showAsDropDown(volumeButton, 0,
-                -volumeButton.getHeight() - volumePopup.getHeight() - dp(4), Gravity.END);
+                -volumeButton.getHeight() - volumePopup.getHeight() - dp(10), Gravity.END);
         });
         volume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onStartTrackingTouch(SeekBar bar) { adjustingVolume = true; }
@@ -586,11 +649,16 @@ public final class MainActivity extends Activity {
             @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
                 volumePercent.setText(progress + "%");
                 if (!fromUser) return;
-                volumeQuietUntil = android.os.SystemClock.elapsedRealtime() + 1200;
-                ui.removeCallbacks(sendVolume);
-                ui.postDelayed(sendVolume, 150);
+                queueVolume(progress);
             }
         });
+    }
+
+    private void queueVolume(int level) {
+        pendingVolume = level;
+        volumeQuietUntil = android.os.SystemClock.elapsedRealtime() + 1200;
+        ui.removeCallbacks(sendVolume);
+        ui.postDelayed(sendVolume, 150);
     }
 
     private void dismissVolume() {
@@ -611,6 +679,7 @@ public final class MainActivity extends Activity {
         timelinePanel = column();
         seeking = null;
         seek = (SeekBar) getLayoutInflater().inflate(R.layout.tempo_seek, timelinePanel, false);
+        seek.setContentDescription(tr("Перемотка трека"));
         seek.setBackground(null);
         seek.setProgressDrawable(new WaveDrawable(accent, Appearance.mix(raised, dim, .35)));
         GradientDrawable thumb = shape(accent, 7);
@@ -675,7 +744,7 @@ public final class MainActivity extends Activity {
     private void updatePlayback(Playback value) {
         last = value;
         if (!paired) {
-            status.setText(pairing ? "Подключаемся…" : "ПК не подключён");
+            status.setText(pairing ? tr("Подключаемся…") : tr("ПК не подключён"));
             return;
         }
         connectionStatus(value);
@@ -685,7 +754,7 @@ public final class MainActivity extends Activity {
         refreshTimeline(active);
         refreshVolume(value);
         boolean playing = active != null && active.playing;
-        title.setText(value == null ? "ПК недоступен" : active == null ? "Нет воспроизведения" : active.displayTitle());
+        title.setText(value == null ? tr("ПК недоступен") : active == null ? tr("Нет воспроизведения") : active.displayTitle());
         sourceLabel.setText(active == null ? "" :
             active.artist.isEmpty() ? active.app + "  ›" : active.artist + "  ·  " + active.app + "  ›");
         sourceLabel.setEnabled(active != null);
@@ -709,8 +778,8 @@ public final class MainActivity extends Activity {
     private void connectionStatus(Playback value) {
         Pairing connection = PhoneLink.connection(this);
         String computer = connection == null ? "" : connection.name;
-        String state = pairing ? "Подключаемся…" : value != null ? "Подключён" :
-            PhoneLink.accessDenied ? "Нужна новая привязка" : "Нет связи";
+        String state = pairing ? tr("Подключаемся…") : value != null ? tr("Подключён") :
+            PhoneLink.accessDenied ? tr("Нужна новая привязка") : tr("Нет связи");
         String caption = state + (computer.isEmpty() ? "" : " · " + computer);
         if (!caption.contentEquals(status.getText())) status.setText(caption);
     }
@@ -722,7 +791,7 @@ public final class MainActivity extends Activity {
             toggle.setOutAnimation(animate ? android.view.animation.AnimationUtils.loadAnimation(this, R.anim.icon_out) : null);
             toggle.setDisplayedChild(frame);
         }
-        toggle.setContentDescription(frame == 2 ? "Восстановить связь" : frame == 1 ? "Пауза" : "Воспроизвести");
+        toggle.setContentDescription(frame == 2 ? tr("Восстановить связь") : frame == 1 ? tr("Пауза") : tr("Воспроизвести"));
     }
 
     private void action(String command) {
@@ -752,15 +821,12 @@ public final class MainActivity extends Activity {
         sourceSignature = signature.toString();
         sourcesGrid.removeAllViews();
         LinearLayout automatic = settingsGroup(sourcesGrid);
-        menuRow(automatic, R.drawable.ic_auto, "Автовыбор", "Текущая сессия Windows", selected.isEmpty(),
+        menuRow(automatic, R.drawable.ic_auto, tr("Автовыбор"), tr("Текущая сессия Windows"), selected.isEmpty(),
             () -> selectSource(""));
         gap(sourcesGrid, 15);
         if (state == null || state.sources.isEmpty()) {
             LinearLayout empty = card(sourcesGrid);
-            empty.addView(label(state == null ? "Нет связи с компьютером" : "Нет активных источников", 19, text, true));
-            gap(empty, 5);
-            empty.addView(label(state == null ? "Проверь, что CueRelay запущен на ПК." :
-                "Открой музыку или видео на компьютере.", 15, dim, false));
+            empty.addView(label(tr("Нет активных источников"), 16, dim, false));
             return;
         }
         for (int i = 0; i < state.sources.size(); i += 2) {
@@ -804,14 +870,14 @@ public final class MainActivity extends Activity {
     }
 
     private void gallery() {
-        panel("Добавить виджет", list -> {
-            menuRow(list, R.drawable.ic_note, "Квадрат · 2 × 2", "Обложка и три крупные кнопки", false,
+        panel(tr("Добавить виджет"), list -> {
+            menuRow(list, R.drawable.ic_note, tr("Квадрат · 2 × 2"), tr("Обложка и три крупные кнопки"), false,
                 () -> pin(PlayerWidget.Format.SQUARE));
-            menuRow(list, R.drawable.ic_play, "Строка · 4 × 1", "Обложка, название и управление", false,
+            menuRow(list, R.drawable.ic_play, tr("Строка · 4 × 1"), tr("Обложка, название и управление"), false,
                 () -> pin(PlayerWidget.Format.COMPACT));
-            menuRow(list, R.drawable.ic_source, "С обложкой · 4 × 2", "Управление и быстрый доступ к источникам", false,
+            menuRow(list, R.drawable.ic_source, tr("С обложкой · 4 × 2"), tr("Управление и быстрый доступ к источникам"), false,
                 () -> pin(PlayerWidget.Format.MINI));
-            menuRow(list, R.drawable.ic_previous, "Только кнопки", "Источники, предыдущий, пауза, следующий", false,
+            menuRow(list, R.drawable.ic_previous, tr("Только кнопки"), tr("Источники, предыдущий, пауза, следующий"), false,
                 () -> pin(PlayerWidget.Format.BUTTONS));
         });
     }
@@ -821,7 +887,7 @@ public final class MainActivity extends Activity {
         AppWidgetManager manager = getSystemService(AppWidgetManager.class);
         if (manager != null && manager.isRequestPinAppWidgetSupported() &&
             manager.requestPinAppWidget(new ComponentName(this, format.provider), null, null)) return;
-        showError("Открой меню виджетов рабочего стола и найди CueRelay.");
+        showError(tr("Открой меню виджетов рабочего стола и найди CueRelay."));
     }
 
     private void settings() {
@@ -830,39 +896,50 @@ public final class MainActivity extends Activity {
             navigate(Page.SETTINGS);
             return;
         }
-        panel("Настройки", this::settingsContent);
+        panel(tr("Настройки"), this::settingsContent);
         settingsSheet = SettingsSheet.MAIN;
     }
 
     private void settingsContent(LinearLayout list) {
-        menuRow(settingsGroup(list), R.drawable.ic_appearance, "Оформление", "Тема, цвет, плеер и виджеты",
+        menuRow(settingsGroup(list), R.drawable.ic_appearance, tr("Оформление"), tr("Тема, цвет, плеер и виджеты"),
             false, this::appearanceSettings);
+        menuRow(settingsGroup(list), R.drawable.ic_settings, tr("Язык"), "en".equals(UiText.language(this)) ? "English" : "Русский",
+            false, this::changeLanguage);
         if (paired) {
-            section(list, "Подключение");
+            section(list, tr("Подключение"));
             LinearLayout connection = settingsGroup(list);
-            menuRow(connection, R.drawable.ic_signal, "Проверить связь", "Время ответа ПК", false,
+            menuRow(connection, R.drawable.ic_signal, tr("Проверить связь"), tr("Время ответа ПК"), false,
                 () -> PhoneLink.start(this, "check-link", null));
-            menuRow(connection, R.drawable.ic_qr, "Перепривязать по QR", "", false, this::requestScan);
-            menuRow(connection, R.drawable.ic_keyboard, "Ввести код привязки", "", false, this::pasteCode);
-            menuRow(connection, R.drawable.ic_unlink, "Отвязать компьютер", "", false, this::forget);
+            menuRow(connection, R.drawable.ic_qr, tr("Перепривязать по QR"), "", false, this::requestScan);
+            menuRow(connection, R.drawable.ic_keyboard, tr("Ввести код привязки"), "", false, this::pasteCode);
+            menuRow(connection, R.drawable.ic_unlink, tr("Отвязать компьютер"), "", false, this::forget);
             sectionPhoneControl(list);
         }
-        section(list, "Приложение");
+        section(list, tr("Приложение"));
         LinearLayout app = settingsGroup(list);
-        menuRow(app, R.drawable.ic_retry, "Обновления", "Версия " + ReleaseUpdates.currentVersion(this), false, this::updatesPanel);
-        menuRow(app, R.drawable.ic_source, "Диагностика", "Просмотреть или сохранить журнал", false, this::diagnosticsPanel);
+        menuRow(app, R.drawable.ic_retry, tr("Обновления"), tr("Версия ") + ReleaseUpdates.currentVersion(this), false, this::updatesPanel);
+        menuRow(app, R.drawable.ic_source, tr("Диагностика"), tr("Просмотреть или сохранить журнал"), false, this::diagnosticsPanel);
+    }
+
+    private void changeLanguage() {
+        String language = "en".equals(UiText.language(this)) ? "ru" : "en";
+        Pairing.prefs(this).edit().putString(UiText.LANGUAGE, language).apply();
+        render(null);
+        PlayerWidget.updateAll(this);
+        if (paired) PhoneLink.start(this, "surface", null);
+        else settings();
     }
 
     private void paintUpdateNotice() {
         updateNotice.setVisibility(availableUpdate == null ? View.GONE : View.VISIBLE);
-        if (availableUpdate != null) updateNotice.setText("Доступно обновление " + availableUpdate.version);
+        if (availableUpdate != null) updateNotice.setText(tr("Доступно обновление ") + availableUpdate.version);
     }
 
     private void checkUpdates() {
         if (checkingUpdates || installingUpdate) return;
         checkingUpdates = true;
         nextUpdateCheck = android.os.SystemClock.elapsedRealtime() + 6L * 60 * 60 * 1000;
-        updateStatus = "Проверяем GitHub…";
+        updateStatus = tr("Проверяем GitHub…");
         refreshUpdatePanel();
         updatesExecutor.execute(() -> {
             ReleaseUpdates.Release release = null;
@@ -871,10 +948,10 @@ public final class MainActivity extends Activity {
             try {
                 release = ReleaseUpdates.check(this);
                 checked = true;
-                if (release == null) status = "Версия актуальна";
+                if (release == null) status = tr("Версия актуальна");
                 Diagnostics.record(this, "updates", release == null ? "up_to_date" : "update_available", null);
             } catch (Exception error) {
-                status = "Не удалось проверить обновления. Попробуй позже.";
+                status = tr("Не удалось проверить обновления. Попробуй позже.");
                 Diagnostics.record(this, "updates", "check_failed", error);
             }
             ReleaseUpdates.Release result = release;
@@ -898,7 +975,7 @@ public final class MainActivity extends Activity {
     private void paintUpdatePanel() {
         ReleaseUpdates.Release release = availableUpdate;
         updateDetails.setText(!updateStatus.isEmpty() ? updateStatus :
-            release == null ? "Проверка через GitHub Releases" : "Доступна версия " + release.version);
+            release == null ? tr("Проверка через GitHub Releases") : tr("Доступна версия ") + release.version);
         updateDetails.setTextColor(release != null && updateStatus.isEmpty() ? accent : dim);
         enabled(checkUpdateButton, !checkingUpdates && !installingUpdate);
         enabled(installUpdateButton, !checkingUpdates && !installingUpdate);
@@ -907,11 +984,11 @@ public final class MainActivity extends Activity {
 
     private void updatesPanel() {
         if (BuildProfile.DEV) {
-            panel("Обновления", body -> body.addView(label("Локальная сборка Dev", 15, text, true)),
+            panel(tr("Обновления"), body -> body.addView(label(tr("Локальная сборка Dev"), 15, text, true)),
                 this::settings, true);
             return;
         }
-        panel("Обновления", body -> {
+        panel(tr("Обновления"), body -> {
             LinearLayout summary = column();
             summary.setPadding(dp(13), dp(12), dp(13), dp(12));
             summary.setBackground(shape(Appearance.mix(panel, raised, .72), 20));
@@ -932,13 +1009,13 @@ public final class MainActivity extends Activity {
             summary.addView(updateDetails);
             body.addView(summary);
             gap(body, 12);
-            installUpdateButton = button("Скачать и установить", true, () -> {
+            installUpdateButton = button(tr("Скачать и установить"), true, () -> {
                 if (availableUpdate != null) installUpdate(availableUpdate);
             });
             LinearLayout.LayoutParams installSize = full(49);
             installSize.bottomMargin = dp(6);
             body.addView(installUpdateButton, installSize);
-            checkUpdateButton = button("Проверить обновления", false, this::checkUpdates);
+            checkUpdateButton = button(tr("Проверить обновления"), false, this::checkUpdates);
             LinearLayout.LayoutParams checkSize = full(46);
             checkSize.bottomMargin = dp(SHEET_SIDE_INSET - SHEET_BOTTOM_INSET);
             body.addView(checkUpdateButton, checkSize);
@@ -949,14 +1026,14 @@ public final class MainActivity extends Activity {
 
     private void installUpdate(ReleaseUpdates.Release release) {
         if (!getPackageManager().canRequestPackageInstalls()) {
-            updateStatus = "Разреши установку для CueRelay в Android, затем снова нажми «Скачать и установить».";
+            updateStatus = tr("Разреши установку для CueRelay в Android, затем снова нажми «Скачать и установить».");
             refreshUpdatePanel();
             startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
                 .setData(android.net.Uri.parse("package:" + getPackageName())));
             return;
         }
         installingUpdate = true;
-        updateStatus = "Загружаем и проверяем APK…";
+        updateStatus = tr("Загружаем и проверяем APK…");
         refreshUpdatePanel();
         updatesExecutor.execute(() -> {
             Intent installer = null;
@@ -966,11 +1043,11 @@ public final class MainActivity extends Activity {
             ui.post(() -> {
                 if (isDestroyed() || isFinishing()) return;
                 installingUpdate = false;
-                updateStatus = "Не удалось подготовить обновление.";
+                updateStatus = tr("Не удалось подготовить обновление.");
                 if (verified != null) {
                     try {
                         startActivity(verified);
-                        updateStatus = "Подтверди установку в Android.";
+                        updateStatus = tr("Подтверди установку в Android.");
                         Diagnostics.record(this, "updates", "installer_started", null);
                     } catch (RuntimeException error) { Diagnostics.record(this, "updates", "installer_failed", error); }
                 }
@@ -980,16 +1057,16 @@ public final class MainActivity extends Activity {
     }
 
     private void diagnosticsPanel() {
-        panel("Диагностика", body -> {
+        panel(tr("Диагностика"), body -> {
             String log;
             try { log = Diagnostics.read(this); }
             catch (java.io.IOException error) { log = ""; }
             if (log.isEmpty()) {
-                body.addView(label("Журнал пока пуст.", 15, dim, false));
+                body.addView(label(tr("Журнал пока пуст."), 15, dim, false));
                 return;
             }
             final String snapshot = log;
-            body.addView(button("Сохранить журнал", true, () -> {
+            body.addView(button(tr("Сохранить журнал"), true, () -> {
                 logExport = snapshot;
                 startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
                     .setType("text/plain").putExtra(Intent.EXTRA_TITLE, "CueRelay-Diagnostics.jsonl"), EXPORT_LOG);
@@ -1005,25 +1082,28 @@ public final class MainActivity extends Activity {
     }
 
     private void appearanceSettings() {
-        panel("Оформление", this::appearanceContent, this::settings, true);
+        panel(tr("Оформление"), this::appearanceContent, this::settings, true);
         settingsSheet = SettingsSheet.APPEARANCE;
     }
 
     private void appearanceContent(LinearLayout list) {
         String mode = Appearance.theme(this);
         addThemePreview(list);
-        section(list, "Тема");
+        section(list, tr("Тема"));
         LinearLayout theme = settingsGroup(list);
-        appearanceRow(theme, "system", "Как на устройстве", mode, R.drawable.ic_monitor);
-        appearanceRow(theme, "light", "Светлая", mode, R.drawable.ic_sun);
-        appearanceRow(theme, "dark", "Тёмная", mode, R.drawable.ic_moon);
-        section(list, "Акцентный цвет");
+        appearanceRow(theme, "system", tr("Как на устройстве"), mode, R.drawable.ic_monitor);
+        appearanceRow(theme, "light", tr("Светлая"), mode, R.drawable.ic_sun);
+        appearanceRow(theme, "dark", tr("Тёмная"), mode, R.drawable.ic_moon);
+        section(list, tr("Акцентный цвет"));
         accentChoices(list);
-        section(list, "Плеер и виджеты");
+        settingSwitch(settingsGroup(list), R.drawable.ic_auto, tr("Синхронизировать тему и цвет"), Appearance.SYNC, Appearance.sync(this));
+        section(list, tr("Плеер и виджеты"));
         LinearLayout playback = settingsGroup(list);
-        settingSwitch(playback, R.drawable.ic_image, "Показывать обложки", "show-art", Appearance.showArtwork(this));
-        settingSwitch(playback, R.drawable.ic_bell, "Управление в шторке и на экране блокировки", "system-media",
+        settingSwitch(playback, R.drawable.ic_image, tr("Показывать обложки"), "show-art", Appearance.showArtwork(this));
+        settingSwitch(playback, R.drawable.ic_bell, tr("Управление в шторке и на экране блокировки"), "system-media",
             Appearance.systemMedia(this));
+        settingSwitch(playback, R.drawable.ic_volume, tr("Кнопки громкости управляют ПК"), VOLUME_KEYS,
+            Pairing.prefs(this).getBoolean(VOLUME_KEYS, false));
     }
 
     private void addThemePreview(LinearLayout list) {
@@ -1066,11 +1146,11 @@ public final class MainActivity extends Activity {
         colors.setPadding(dp(7), dp(10), dp(7), dp(10));
         for (Appearance.Colorway color : Appearance.Colorway.values()) {
             boolean selected = color.key.equals(renderedAccent);
-            ImageView swatch = swatch(colors, color.label, color.seed, selected, 0);
+            ImageView swatch = swatch(colors, tr(color.label), color.seed, selected, 0);
             swatch.setOnClickListener(v -> applyAppearance(v, "accent", color.key, renderedAccent));
         }
         boolean custom = renderedAccent.startsWith("#");
-        ImageView add = swatch(colors, custom ? "Свой цвет " + renderedAccent : "Свой цвет",
+        ImageView add = swatch(colors, custom ? tr("Свой цвет ") + renderedAccent : tr("Свой цвет"),
             custom ? Appearance.seed(renderedAccent) : raised, custom, R.drawable.ic_add);
         add.setOnClickListener(v -> customColor());
         list.addView(colors, new LinearLayout.LayoutParams(-1, -2));
@@ -1094,31 +1174,31 @@ public final class MainActivity extends Activity {
     }
 
     private void sectionPhoneControl(LinearLayout list) {
-        section(list, "Управление телефоном");
+        section(list, tr("Управление телефоном"));
         LinearLayout group = settingsGroup(list);
         boolean granted = PhoneMedia.hasAccess(this);
-        menuRow(group, R.drawable.ic_bell, "Доступ к уведомлениям",
-            granted ? "Разрешён" : "Нужен для чтения медиасессий Android", granted, () ->
+        menuRow(group, R.drawable.ic_bell, tr("Доступ к уведомлениям"),
+            granted ? tr("Разрешён") : tr("Нужен для чтения медиасессий Android"), granted, () ->
                 startActivity(new Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)));
-        menuRow(group, R.drawable.ic_apps, "Видимые приложения", "Выбрать, какие плееры видны на ПК", false, this::phoneApps);
-        settingSwitch(group, R.drawable.ic_monitor, "Разрешить управление с ПК", PhoneMedia.ENABLED, PhoneMedia.enabled(this));
-        settingSwitch(group, R.drawable.ic_image, "Передавать обложки на ПК", PhoneMedia.COVERS,
+        menuRow(group, R.drawable.ic_apps, tr("Видимые приложения"), tr("Выбрать, какие плееры видны на ПК"), false, this::phoneApps);
+        settingSwitch(group, R.drawable.ic_monitor, tr("Разрешить управление с ПК"), PhoneMedia.ENABLED, PhoneMedia.enabled(this));
+        settingSwitch(group, R.drawable.ic_image, tr("Передавать обложки на ПК"), PhoneMedia.COVERS,
             Pairing.prefs(this).getBoolean(PhoneMedia.COVERS, true));
     }
 
     private void phoneApps() {
-        panel("Видимые приложения", list -> {
+        panel(tr("Видимые приложения"), list -> {
             java.util.Map<String, String> apps = PhoneMedia.visibleApps(this);
             if (apps.isEmpty()) {
-                list.addView(label(PhoneMedia.hasAccess(this) ? "Запусти плеер на телефоне, чтобы он появился в списке." :
-                    "Сначала разреши CueRelay доступ к уведомлениям.", 15, dim, false));
+                list.addView(label(PhoneMedia.hasAccess(this) ? tr("Запусти плеер на телефоне, чтобы он появился в списке.") :
+                    tr("Сначала разреши CueRelay доступ к уведомлениям."), 15, dim, false));
                 return;
             }
             java.util.Set<String> blocked = new java.util.HashSet<>(Pairing.prefs(this).getStringSet(PhoneMedia.BLOCKED,
                 java.util.Collections.emptySet()));
             for (java.util.Map.Entry<String, String> item : apps.entrySet()) {
                 String key = item.getKey();
-                menuRow(list, R.drawable.ic_note, item.getValue(), blocked.contains(key) ? "Скрыто на ПК" : "Видно на ПК",
+                menuRow(list, R.drawable.ic_note, item.getValue(), blocked.contains(key) ? tr("Скрыто на ПК") : tr("Видно на ПК"),
                     !blocked.contains(key), () -> {
                         if (!blocked.add(key)) blocked.remove(key);
                         Pairing.prefs(this).edit().putStringSet(PhoneMedia.BLOCKED, new java.util.HashSet<>(blocked)).apply();
@@ -1167,20 +1247,21 @@ public final class MainActivity extends Activity {
         control.setChecked(value);
         control.setOnCheckedChangeListener((view, checked) -> {
             Pairing.prefs(this).edit().putBoolean(key, checked).apply();
+            if (checked && Appearance.SYNC.equals(key)) Appearance.takeRemote(this, PhoneLink.playback);
             updatePlayback(PhoneLink.playback);
             PlayerWidget.updateAll(this);
             if (paired) PhoneLink.start(this,
                 PhoneMedia.ENABLED.equals(key) || PhoneMedia.COVERS.equals(key) ? "phone-settings" : "surface", null);
             if (checked && PhoneMedia.ENABLED.equals(key) && !PhoneMedia.hasAccess(this))
-                panel("Доступ к уведомлениям", body -> {
-                    body.addView(label("Разреши CueRelay находить активные плееры Android, чтобы управлять ими с ПК.", 15, dim, false));
+                panel(tr("Доступ к уведомлениям"), body -> {
+                    body.addView(label(tr("Разреши CueRelay находить активные плееры Android, чтобы управлять ими с ПК."), 15, dim, false));
                     gap(body, 12);
-                    body.addView(button("Открыть настройки", true, () -> {
+                    body.addView(button(tr("Открыть настройки"), true, () -> {
                         closePanel();
                         startActivity(new Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
                     }), full(49));
                     gap(body, 5);
-                    body.addView(button("Позже", false, this::closePanel), full(46));
+                    body.addView(button(tr("Позже"), false, this::closePanel), full(46));
                 });
         });
         control.setMinHeight(dp(58));
@@ -1240,23 +1321,20 @@ public final class MainActivity extends Activity {
         Point pressed = tapOrigin;
         tapOrigin = null;
         if (key.equals(active)) return;
-        if (paired && PhoneLink.playback == null) {
-            showError("Подключись к ПК, чтобы изменить оформление на обоих устройствах.");
-            return;
-        }
         if (pressed == null) {
             int[] location = new int[2];
             view.getLocationOnScreen(location);
             pressed = new Point(location[0] + view.getWidth() / 2, location[1] + view.getHeight() / 2);
         }
         appearanceOrigin = pressed;
-        if (paired) PhoneLink.start(this, type, key);
+        Playback state = PhoneLink.playback;
+        if (paired && state != null && state.syncAppearance && Appearance.sync(this)) PhoneLink.start(this, type, key);
         else Pairing.prefs(this).edit().putString(type, key).apply();
         refresh();
     }
 
     private void customColor() {
-        panel("Свой цвет", list -> {
+        panel(tr("Свой цвет"), list -> {
             int initial = Appearance.seed(renderedAccent);
             float[] hsv = new float[3];
             Color.colorToHSV(initial, hsv);
@@ -1281,20 +1359,16 @@ public final class MainActivity extends Activity {
             hex.setBackground(null);
             hex.setPadding(0, 0, dp(7), 0);
             hex.setText(hex(initial));
-            hex.setContentDescription("Цвет HEX");
+            hex.setContentDescription(tr("Цвет HEX"));
             hex.setFilters(new android.text.InputFilter[]{ new android.text.InputFilter.LengthFilter(7) });
             field.addView(hex, new LinearLayout.LayoutParams(0, dp(36), 1));
             field.addView(label("HEX", 12, dim, true));
             list.addView(field, new LinearLayout.LayoutParams(-1, -2));
             gap(list, 10);
-            Button apply = button("Применить", true, () -> { });
+            Button apply = button(tr("Применить"), true, () -> { });
             apply.setOnClickListener(view -> {
                 String key = normalizedHex(hex.getText());
                 if (!key.matches("#[0-9A-F]{6}")) return;
-                if (paired && PhoneLink.playback == null) {
-                    showError("Подключись к компьютеру, чтобы синхронизировать цвет.");
-                    return;
-                }
                 applyAppearance(view, "accent", key, renderedAccent);
                 appearanceSettings();
             });
@@ -1425,7 +1499,7 @@ public final class MainActivity extends Activity {
             }
         });
         LinearLayout top = row();
-        ImageView close = icon(back ? R.drawable.ic_left : R.drawable.ic_close, back ? "Назад" : "Закрыть", text, 9);
+        ImageView close = icon(back ? R.drawable.ic_left : R.drawable.ic_close, back ? tr("Назад") : tr("Закрыть"), text, 9);
         close.setBackground(ripple(raised, 17));
         close.setOnClickListener(v -> closeAction.run());
         LinearLayout.LayoutParams closeSize = new LinearLayout.LayoutParams(dp(39), dp(39));
@@ -1543,7 +1617,7 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(code, permissions, grants);
         if (code == CAMERA && grants.length > 0) {
             if (grants[0] == PackageManager.PERMISSION_GRANTED) openScanner();
-            else showError("Разреши доступ к камере в настройках или вставь код вручную.");
+            else showError(tr("Разреши доступ к камере в настройках или вставь код вручную."));
         }
     }
 
@@ -1557,18 +1631,18 @@ public final class MainActivity extends Activity {
             try (java.io.OutputStream file = getContentResolver().openOutputStream(data.getData())) {
                 if (file == null) throw new java.io.IOException("No document stream");
                 file.write(snapshot.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                android.widget.Toast.makeText(this, "Журнал сохранён", android.widget.Toast.LENGTH_SHORT).show();
+                android.widget.Toast.makeText(this, tr("Журнал сохранён"), android.widget.Toast.LENGTH_SHORT).show();
             } catch (java.io.IOException | SecurityException error) {
                 Diagnostics.record(this, "diagnostics", "export_failed", error);
-                showError("Не удалось сохранить журнал.");
+                showError(tr("Не удалось сохранить журнал."));
             }
         }
     }
 
     private void pasteCode() {
         if (pairing) return;
-        panel("Код привязки", list -> {
-            EditText field = inputField("Вставь код из CueRelay на ПК");
+        panel(tr("Код привязки"), list -> {
+            EditText field = inputField(tr("Вставь код из CueRelay на ПК"));
             field.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
             field.setTypeface(regularFont);
             field.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
@@ -1576,7 +1650,7 @@ public final class MainActivity extends Activity {
             list.addView(field, full(54));
             Runnable connect = () -> {
                 String code = field.getText().toString().trim();
-                if (code.isEmpty()) { field.setError("Вставь код привязки"); return; }
+                if (code.isEmpty()) { field.setError(tr("Вставь код привязки")); return; }
                 pair(code);
             };
             field.setOnEditorActionListener((view, action, event) -> {
@@ -1585,9 +1659,9 @@ public final class MainActivity extends Activity {
                 return true;
             });
             gap(list, 12);
-            list.addView(button("Подключить", true, connect), full(49));
+            list.addView(button(tr("Подключить"), true, connect), full(49));
             gap(list, 5);
-            list.addView(button("Отмена", false, this::closePanel), full(46));
+            list.addView(button(tr("Отмена"), false, this::closePanel), full(46));
         });
         if (sheet != null && sheet.getWindow() != null)
             sheet.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE |
@@ -1611,7 +1685,7 @@ public final class MainActivity extends Activity {
         if (pairing) return;
         final Pairing invitation;
         try { invitation = Pairing.fromQr(code); }
-        catch (IllegalArgumentException error) { pairMessage("Открой новый QR-код в обновлённом CueRelay на Windows."); return; }
+        catch (IllegalArgumentException error) { pairMessage(tr("Открой новый QR-код в обновлённом CueRelay на Windows.")); return; }
         closePanel();
         PairFlow flow = new PairFlow(invitation);
         activePair = flow;
@@ -1633,7 +1707,7 @@ public final class MainActivity extends Activity {
                         return;
                     } catch (DeskClient.Status status) {
                         Diagnostics.record(this, "pairing", status.code == 403 ? "invitation_rejected" : "http_error", status);
-                        if (status.code == 403) { pairFailed(flow, "Этот QR-код больше не действует. Обнови его на ПК."); return; }
+                        if (status.code == 403) { pairFailed(flow, tr("Этот QR-код больше не действует. Обнови его на ПК.")); return; }
                     } catch (javax.net.ssl.SSLException error) {
                         Diagnostics.record(this, "pairing", "tls_failed", error);
                     } catch (java.net.SocketTimeoutException error) {
@@ -1642,8 +1716,8 @@ public final class MainActivity extends Activity {
                         Diagnostics.record(this, "pairing", "peer_request_failed", error);
                     }
                 }
-                pairFailed(flow, "Не удалось связаться с ПК. Проверь, что CueRelay установлен и запущен на ПК, а телефон подключён к основной сети Wi-Fi. Затем обнови QR-код.");
-            } catch (Exception ignored) { pairFailed(flow, "Не удалось создать защищённое подключение."); }
+                pairFailed(flow, tr("Не удалось связаться с ПК. Проверь, что CueRelay установлен и запущен на ПК, а телефон подключён к основной сети Wi-Fi. Затем обнови QR-код."));
+            } catch (Exception ignored) { pairFailed(flow, tr("Не удалось создать защищённое подключение.")); }
         });
     }
 
@@ -1657,14 +1731,14 @@ public final class MainActivity extends Activity {
 
     private void pairSheet(PairFlow flow, String computer, String code, Runnable confirm) {
         boolean checking = confirm != null;
-        panel(checking ? "Это твой компьютер?" : "Подтверди на ПК", list -> {
+        panel(checking ? tr("Это твой компьютер?") : tr("Подтверди на ПК"), list -> {
             list.addView(deviceCard(computer, R.drawable.ic_logo));
             gap(list, 10);
             LinearLayout check = column();
             check.setGravity(Gravity.CENTER_HORIZONTAL);
             check.setPadding(dp(14), dp(11), dp(14), dp(10));
             check.setBackground(shape(Appearance.mix(raised, accent, .16), 19));
-            TextView codeLabel = label("Код проверки", 13, text, true);
+            TextView codeLabel = label(tr("Код проверки"), 13, text, true);
             codeLabel.setGravity(Gravity.CENTER);
             check.addView(codeLabel);
             TextView digits = label(code.substring(0, 3) + " " + code.substring(3), 34, text, true);
@@ -1672,18 +1746,18 @@ public final class MainActivity extends Activity {
             digits.setFontFeatureSettings("tnum");
             digits.setGravity(Gravity.CENTER);
             digits.setLetterSpacing(.035f);
-            digits.setContentDescription("Код проверки " + code);
+            digits.setContentDescription(tr("Код проверки ") + code);
             check.addView(digits);
             list.addView(check);
             gap(list, 12);
-            list.addView(label(checking ? "Сверь цифры и нажми «Код совпадает». На ПК нажми «Это мой телефон»." :
-                "Нажми «Это мой телефон» на компьютере, если ещё не нажал. Дождись подключения.", 15, dim, false));
+            list.addView(label(checking ? tr("Сверь цифры и нажми «Код совпадает». На ПК нажми «Это мой телефон».") :
+                tr("Нажми «Это мой телефон» на компьютере, если ещё не нажал. Дождись подключения."), 15, dim, false));
             gap(list, 12);
             if (checking) {
-                list.addView(button("Код совпадает", true, confirm), full(49));
+                list.addView(button(tr("Код совпадает"), true, confirm), full(49));
                 gap(list, 5);
             }
-            list.addView(button(checking ? "Это не мой ПК" : "Отмена", false, () -> cancelPair(flow)), full(46));
+            list.addView(button(checking ? tr("Это не мой ПК") : tr("Отмена"), false, () -> cancelPair(flow)), full(46));
         }, () -> cancelPair(flow));
         pairDialog = sheet;
     }
@@ -1697,7 +1771,7 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams iconSize = new LinearLayout.LayoutParams(dp(35), dp(35));
         iconSize.setMarginEnd(dp(11));
         machine.addView(glyph, iconSize);
-        TextView deviceName = label(name.isEmpty() ? "Компьютер" : name, 17, text, true);
+        TextView deviceName = label(name.isEmpty() ? tr("Компьютер") : name, 17, text, true);
         deviceName.setMaxLines(2);
         deviceName.setEllipsize(TextUtils.TruncateAt.END);
         machine.addView(deviceName, new LinearLayout.LayoutParams(0, -2, 1));
@@ -1723,7 +1797,7 @@ public final class MainActivity extends Activity {
                         break;
                     } catch (DeskClient.Status error) {
                         if (error.code == 403) {
-                            pairFailed(flow, "Запрос закрыт или истёк. Открой новый QR-код.");
+                            pairFailed(flow, tr("Запрос закрыт или истёк. Открой новый QR-код."));
                             return;
                         }
                     } catch (java.io.IOException ignored) {
@@ -1736,7 +1810,7 @@ public final class MainActivity extends Activity {
                     addresses.add(0, respondingAddress);
                 }
                 if (answer != null && "denied".equals(answer.optString("status"))) {
-                    pairFailed(flow, "Запрос отклонён на компьютере.");
+                    pairFailed(flow, tr("Запрос отклонён на компьютере."));
                     return;
                 }
                 if (answer != null && "approved".equals(answer.optString("status"))) {
@@ -1749,9 +1823,10 @@ public final class MainActivity extends Activity {
                         Pairing previous = PhoneLink.connection(this);
                         boolean differentComputer = previous == null || !previous.fingerprint.equals(saved.fingerprint);
                         try {
-                            saved.save(this, answer.getString("theme"), answer.optString("accent", "green"), differentComputer);
+                            saved.save(this, answer.getString("theme"), answer.optString("accent", "green"), differentComputer,
+                                answer.optBoolean("syncAppearance", true));
                         } catch (Exception error) {
-                            pairFailed(flow, "Не удалось сохранить защищённую привязку на телефоне. Разблокируй телефон и попробуй снова.");
+                            pairFailed(flow, tr("Не удалось сохранить защищённую привязку на телефоне. Разблокируй телефон и попробуй снова."));
                             return;
                         }
                         saved.rememberAddress(this, respondingAddress);
@@ -1771,10 +1846,10 @@ public final class MainActivity extends Activity {
                 }
                 Thread.sleep(800);
             }
-            if (!flow.cancelled) pairFailed(flow, reachedPc ? "Время подтверждения истекло. Открой новый QR-код." :
-                "Во время подтверждения телефон потерял связь с компьютером. Проверь локальную сеть и открой новый QR-код.");
+            if (!flow.cancelled) pairFailed(flow, reachedPc ? tr("Время подтверждения истекло. Открой новый QR-код.") :
+                tr("Во время подтверждения телефон потерял связь с компьютером. Проверь локальную сеть и открой новый QR-код."));
         } catch (InterruptedException stopped) { Thread.currentThread().interrupt(); }
-        catch (Exception error) { pairFailed(flow, "Не удалось завершить привязку."); }
+        catch (Exception error) { pairFailed(flow, tr("Не удалось завершить привязку.")); }
     }
 
     private boolean isCurrentPair(PairFlow flow) {
@@ -1801,10 +1876,10 @@ public final class MainActivity extends Activity {
     }
 
     private void pairMessage(String message) {
-        panel("Привязка не завершена", list -> {
+        panel(tr("Привязка не завершена"), list -> {
             list.addView(label(message, 16, dim, false));
             gap(list, 14);
-            list.addView(button("Понятно", true, this::closePanel), full(49));
+            list.addView(button(tr("Понятно"), true, this::closePanel), full(49));
         });
     }
 
@@ -1819,19 +1894,19 @@ public final class MainActivity extends Activity {
     private void forget() {
         Pairing connection = PhoneLink.connection(this);
         if (connection == null) return;
-        panel("Отвязать компьютер?", list -> {
+        panel(tr("Отвязать компьютер?"), list -> {
             list.addView(deviceCard(connection.name, R.drawable.ic_unlink));
             gap(list, 12);
             boolean online = PhoneLink.playback != null;
-            list.addView(label(online ? "Чтобы подключиться снова, понадобится новая привязка." :
-                "Чтобы отозвать доступ на ПК, также нажми «Отвязать телефон» в Windows.", 15, dim, false));
+            list.addView(label(online ? tr("Чтобы подключиться снова, понадобится новая привязка.") :
+                tr("Чтобы отозвать доступ на ПК, также нажми «Отвязать телефон» в Windows."), 15, dim, false));
             gap(list, 14);
-            list.addView(button("Отвязать", true, () -> {
+            list.addView(button(tr("Отвязать"), true, () -> {
                 closePanel();
                 if (PhoneLink.connection(this) == connection) PhoneLink.start(this, "forget", null);
             }), full(49));
             gap(list, 5);
-            list.addView(button("Отмена", false, this::closePanel), full(46));
+            list.addView(button(tr("Отмена"), false, this::closePanel), full(46));
         });
     }
 
@@ -1841,9 +1916,10 @@ public final class MainActivity extends Activity {
         panel("CueRelay", list -> {
             list.addView(label(message, 15, dim, false));
             gap(list, 12);
-            list.addView(button("Понятно", true, returnToAppearance ? this::appearanceSettings : this::closePanel), full(49));
+            list.addView(button(tr("Понятно"), true, returnToAppearance ? this::appearanceSettings : this::closePanel), full(49));
         }, returnToAppearance ? this::appearanceSettings : null);
     }
+    private String tr(String value) { return UiText.text(this, value); }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private LinearLayout column() { LinearLayout view = new LinearLayout(this); view.setOrientation(LinearLayout.VERTICAL); return view; }
     private LinearLayout row() { LinearLayout view = new LinearLayout(this); view.setGravity(Gravity.CENTER_VERTICAL); return view; }

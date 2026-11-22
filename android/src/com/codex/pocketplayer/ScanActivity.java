@@ -50,7 +50,7 @@ public final class ScanActivity extends Activity implements SurfaceHolder.Callba
         preview.getHolder().addCallback(this);
         root.addView(new ScanFrame(), new FrameLayout.LayoutParams(-1, -1));
         TextView heading = new TextView(this);
-        heading.setText("Сканирование QR-кода");
+        heading.setText(UiText.text(this, "Сканирование QR-кода"));
         heading.setTextColor(Color.WHITE);
         heading.setTextSize(23);
         heading.setTypeface(getResources().getFont(R.font.google_sans_medium));
@@ -61,7 +61,7 @@ public final class ScanActivity extends Activity implements SurfaceHolder.Callba
         android.widget.ImageView cancel = new android.widget.ImageView(this);
         cancel.setImageResource(R.drawable.ic_close);
         cancel.setColorFilter(Color.WHITE);
-        cancel.setContentDescription("Закрыть сканер");
+        cancel.setContentDescription(UiText.text(this, "Закрыть сканер"));
         cancel.setPadding(dp(13), dp(13), dp(13), dp(13));
         cancel.setBackground(pill(0xcc292c34));
         cancel.setOnClickListener(v -> finish());
@@ -70,7 +70,7 @@ public final class ScanActivity extends Activity implements SurfaceHolder.Callba
         exit.topMargin = dp(13);
         root.addView(cancel, exit);
         TextView hint = new TextView(this);
-        hint.setText("Помести QR-код из окна CueRelay в рамку");
+        hint.setText(UiText.text(this, "Помести QR-код из окна CueRelay в рамку"));
         hint.setTextColor(Color.WHITE);
         hint.setTextSize(16);
         hint.setTypeface(getResources().getFont(R.font.google_sans_regular));
@@ -131,7 +131,7 @@ public final class ScanActivity extends Activity implements SurfaceHolder.Callba
             camera.setOneShotPreviewCallback(this);
         } catch (Exception error) {
             close();
-            Toast.makeText(this, "Не удалось открыть камеру. Код можно вставить вручную.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, UiText.text(this, "Не удалось открыть камеру. Код можно вставить вручную."), Toast.LENGTH_LONG).show();
             finish();
         }
     }

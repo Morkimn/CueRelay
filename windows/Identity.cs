@@ -41,6 +41,11 @@ internal sealed class Identity : IDisposable
     public bool Pairing { get { lock (gate) return pairCode is not null && clock.GetUtcNow() < expires; } }
     public string Theme { get { lock (gate) return preferences.Theme; } }
     public string Accent { get { lock (gate) return preferences.Accent; } }
+    public bool SyncAppearance { get { lock (gate) return preferences.SyncAppearance; } }
+    public bool ShowArtwork { get { lock (gate) return preferences.ShowArtwork; } }
+    public bool ReleaseWindow { get { lock (gate) return preferences.ReleaseWindow; } }
+    public bool ReduceMotion { get { lock (gate) return preferences.ReduceMotion; } }
+    public string Language { get { lock (gate) return preferences.Language; } }
     public bool StartWithPhone { get { lock (gate) return preferences.StartWithPhone; } }
     public string PhoneName { get { lock (gate) return preferences.PhoneName; } }
     public string? PairKey { get { lock (gate) return preferences.TokenHash; } }
@@ -161,6 +166,15 @@ internal sealed class Identity : IDisposable
         lock (gate) Save(preferences with { StartWithPhone = enabled });
     }
 
+    public void SetSyncAppearance(bool enabled) { lock (gate) Save(preferences with { SyncAppearance = enabled }); }
+    public void SetShowArtwork(bool enabled) { lock (gate) Save(preferences with { ShowArtwork = enabled }); }
+    public void SetReleaseWindow(bool enabled) { lock (gate) Save(preferences with { ReleaseWindow = enabled }); }
+    public void SetReduceMotion(bool enabled) { lock (gate) Save(preferences with { ReduceMotion = enabled }); }
+    public void SetLanguage(string language)
+    {
+        lock (gate) Save(preferences with { Language = language == "en" ? "en" : "ru" });
+    }
+
     private static string CleanDeviceName(string? value)
     {
         var clean = new string((value ?? "").Where(ch => !char.IsControl(ch) &&
@@ -173,7 +187,7 @@ internal sealed class Identity : IDisposable
         if (theme is not ("light" or "dark" or "system")) return false;
         lock (gate)
         {
-            if (token is not null && !Authenticate(token)) return false;
+            if (token is not null && (!preferences.SyncAppearance || !Authenticate(token))) return false;
             if (preferences.Theme != theme) Save(preferences with { Theme = theme });
             return true;
         }
@@ -188,7 +202,7 @@ internal sealed class Identity : IDisposable
         }
         lock (gate)
         {
-            if (token is not null && !Authenticate(token)) return false;
+            if (token is not null && (!preferences.SyncAppearance || !Authenticate(token))) return false;
             if (preferences.Accent != accent) Save(preferences with { Accent = accent });
             return true;
         }
@@ -253,5 +267,6 @@ internal sealed class Identity : IDisposable
     internal sealed record PairAttempt(string Id, string Device, string Check, string Status, string? Token);
     private sealed record Preferences(string Theme = "system", string? TokenHash = null, string Accent = "green",
         string PhoneName = "", string? CandidateHash = null, string CandidateName = "", DateTimeOffset CandidateExpires = default,
-        bool StartWithPhone = false);
+        bool StartWithPhone = false, bool SyncAppearance = true, bool ShowArtwork = true, bool ReleaseWindow = false,
+        bool ReduceMotion = false, string Language = "ru");
 }

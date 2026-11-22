@@ -28,7 +28,7 @@ final class ColorField extends View {
         this.strip = strip;
         scale = getResources().getDisplayMetrics().density;
         setFocusable(true);
-        setContentDescription(strip ? "Тон" : "Насыщенность и яркость");
+        setContentDescription(strip ? UiText.text(context, "Тон") : UiText.text(context, "Насыщенность и яркость"));
     }
 
     void show(float[] hsv) {

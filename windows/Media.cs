@@ -20,7 +20,7 @@ internal sealed record TrackTimeline(long DurationMs, long PositionMs, long Upda
 }
 
 internal sealed record Snapshot(long Revision, string Computer, string Theme, string Accent, string Current, Source[] Sources,
-    int? Volume = null);
+    int? Volume = null, bool SyncAppearance = true);
 
 internal sealed class Media : IDisposable
 {
@@ -39,7 +39,8 @@ internal sealed class Media : IDisposable
     public Media(Identity identity)
     {
         this.identity = identity;
-        state = new(++nextRevision, Environment.MachineName, identity.Theme, identity.Accent, "", []);
+        state = new(++nextRevision, Environment.MachineName, identity.Theme, identity.Accent, "", [],
+            SyncAppearance: identity.SyncAppearance);
         var started = new TaskCompletionSource<Dispatcher>(TaskCreationOptions.RunContinuationsAsynchronously);
         var worker = new Thread(() =>
         {
@@ -131,7 +132,7 @@ internal sealed class Media : IDisposable
         {
             var theme = identity.Theme;
             var accent = identity.Accent;
-            if (state.Theme == theme && state.Accent == accent) return;
+            if (state.Theme == theme && state.Accent == accent && state.SyncAppearance == identity.SyncAppearance) return;
             Advance(state.Current, state.Sources, theme, accent, state.Volume);
         }
     }
@@ -218,7 +219,8 @@ internal sealed class Media : IDisposable
             var theme = identity.Theme;
             var accent = identity.Accent;
             bool sourcesChanged = !sources.SequenceEqual(state.Sources);
-            if (current == state.Current && theme == state.Theme && accent == state.Accent && volume == state.Volume && !sourcesChanged) return;
+            if (current == state.Current && theme == state.Theme && accent == state.Accent &&
+                state.SyncAppearance == identity.SyncAppearance && volume == state.Volume && !sourcesChanged) return;
             if (sourcesChanged)
                 artwork = players.Values.Where(player => player.Art.Length != 0 && player.Bytes is not null)
                     .GroupBy(player => player.Art).ToDictionary(group => group.Key, group => group.First().Bytes!);
@@ -228,7 +230,7 @@ internal sealed class Media : IDisposable
 
     private void Advance(string current, Source[] sources, string theme, string accent, int? volume)
     {
-        state = new(++nextRevision, Environment.MachineName, theme, accent, current, sources, volume);
+        state = new(++nextRevision, Environment.MachineName, theme, accent, current, sources, volume, identity.SyncAppearance);
         var previous = changed;
         changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         previous.TrySetResult();

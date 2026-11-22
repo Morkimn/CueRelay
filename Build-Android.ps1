@@ -15,6 +15,7 @@ $classes = Join-Path $build 'classes'
 $dex = Join-Path $build 'dex'
 $assets = Join-Path $build 'assets'
 New-Item -ItemType Directory -Force $build, $generated, $classes, $dex, (Join-Path $assets 'licenses') | Out-Null
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'locales\en.txt') -Destination $assets
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'licenses\ZXing-LICENSE.txt'),
     (Join-Path $PSScriptRoot 'licenses\GoogleSans-OFL.txt') -Destination (Join-Path $assets 'licenses')
 $manifest = Join-Path $root 'AndroidManifest.xml'

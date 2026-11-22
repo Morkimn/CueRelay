@@ -1,0 +1,217 @@
+Автовыбор|Auto select
+Автозапуск|Start with Windows
+Акцентный цвет|Accent color
+Ввести код привязки|Enter pairing code
+Версия |Version\s
+Версия актуальна|You’re up to date
+Видимые приложения|Visible apps
+Видно на ПК|Visible on PC
+Во время подтверждения телефон потерял связь с компьютером. Проверь локальную сеть и открой новый QR-код.|The phone lost its connection during pairing. Check your local network and open a new QR code.
+Воспроизвести|Play
+Восстановить связь|Reconnect
+Временный код скопирован на 60 секунд.|Temporary code copied for 60 seconds.
+Время ответа ПК|PC response time
+Время подтверждения истекло. Открой новый QR-код.|Confirmation expired. Open a new QR code.
+Вставить код|Paste code
+Вставь код из CueRelay на ПК|Paste the code from CueRelay on your PC
+Вставь код привязки|Paste pairing code
+Выбрано|Selected
+Выбрать, какие плееры видны на ПК|Choose which players are visible on PC
+Выйти|Quit
+Голубой|Blue
+Громкость компьютера|PC volume
+Громкость|Volume
+Диагностика|Diagnostics
+Дизлайк|Dislike
+Добавить виджет|Add widget
+Доступ к воспроизведению по локальной сети.|Remote playback controls over your local network.
+Доступ к уведомлениям|Notification access
+Доступ|Access
+Доступен после установки|Available after installation
+Доступна версия |Version available:\s
+Доступно обновление |Update available:\s
+Журнал пока пуст.|The log is empty.
+Журнал сохранён.|Log saved.
+Журнал сохранён|Log saved
+Загружаем и проверяем установщик…|Downloading and verifying the installer…
+Загружаем и проверяем APK…|Downloading and verifying the APK…
+Закрыть сканер|Close scanner
+Закрыть|Close
+Заменить телефон|Replace phone
+Запрос закрыт или истёк. Открой новый QR-код.|The request was closed or expired. Open a new QR code.
+Запрос отклонён на компьютере.|The request was declined on the PC.
+Запрос отклонён|Request declined
+Запусти плеер на телефоне, чтобы он появился в списке.|Open a player on your phone to see it here.
+Зелёный|Green
+Источник не выполнил команду|The player could not complete the command
+Источник: |Source:\s
+Источники, предыдущий, пауза, следующий|Sources, previous, pause, next
+Источники|Sources
+Как на устройстве|Use device theme
+Квадрат · 2 × 2|Square · 2 × 2
+Кнопки громкости управляют ПК|Volume buttons control PC
+Код привязки|Pairing code
+Код проверки |Verification code\s
+Код проверки|Verification code
+Код совпадает|Codes match
+Компьютер|Computer
+Лайк|Like
+Локальная сборка Dev|Local Dev build
+Медиаплеер|Media player
+Можно начать привязку заново.|You can start pairing again.
+На телефоне нажми «Код совпадает», если ещё не нажал, и дождись подключения.|Tap “Codes match” on your phone and wait for the connection.
+Нажми «Это мой телефон» на компьютере, если ещё не нажал. Дождись подключения.|Choose “This is my phone” on your PC and wait for the connection.
+Назад|Back
+Настройки|Settings
+Насыщенность и яркость|Saturation and brightness
+Не удалось завершить привязку.|Could not finish pairing.
+Не удалось запустить обновление.|Could not start the update.
+Не удалось запустить CueRelay.|CueRelay could not start.
+Не удалось изменить автозапуск.|Could not change startup settings.
+Не удалось открыть камеру. Код можно вставить вручную.|Could not open the camera. You can paste the code instead.
+Не удалось подготовить обновление.|Could not prepare the update.
+Не удалось проверить обновления. Попробуй позже.|Could not check for updates. Try again later.
+Не удалось связаться с ПК. Проверь, что CueRelay установлен и запущен на ПК, а телефон подключён к основной сети Wi-Fi. Затем обнови QR-код.|Could not reach the PC. Make sure CueRelay is running and your phone is on the main Wi-Fi network, then refresh the QR code.
+Не удалось скопировать код. Попробуй ещё раз.|Could not copy the code. Try again.
+Не удалось создать защищённое подключение.|Could not establish a secure connection.
+Не удалось сохранить журнал.|Could not save the log.
+Не удалось сохранить защищённую привязку на телефоне. Разблокируй телефон и попробуй снова.|Could not save the secure pairing. Unlock your phone and try again.
+Нет активных источников|No active sources
+Нет воспроизведения|Nothing playing
+Нет связи|Offline
+Новый QR-код|New QR code
+Нужен для чтения медиасессий Android|Required to find Android media sessions
+Нужна новая привязка|Pair again
+Обложка и три крупные кнопки|Artwork and three large buttons
+Обложка, название и управление|Artwork, title and controls
+Обложка: |Artwork:\s
+Обложка|Artwork
+Обновить QR-код|Refresh QR code
+Обновления|Updates
+Остановить|Stop
+Отвязать компьютер?|Unpair PC?
+Отвязать компьютер|Unpair PC
+Отвязать телефон?|Unpair phone?
+Отвязать телефон|Unpair phone
+Отвязать|Unpair
+Открой меню виджетов рабочего стола и найди CueRelay.|Open your home screen’s widget picker and find CueRelay.
+Открой новый QR-код в обновлённом CueRelay на Windows.|Open a new QR code in the updated CueRelay on Windows.
+Открой приложение CueRelay на телефоне и отсканируй код. Код действует три минуты.|Open CueRelay on your phone and scan the code. It expires in three minutes.
+Открой CueRelay в Windows и отсканируй QR-код. Подключи оба устройства к одной сети.|Open CueRelay on Windows and scan the QR code. Connect both devices to the same network.
+Открыть настройки|Open settings
+Открыть управление Android|Open Android controls
+Открыть CueRelay|Open CueRelay
+Отмена|Cancel
+Оформление|Appearance
+Пауза|Pause
+Передавать обложки на ПК|Share artwork with PC
+Переключить устройство|Switch device
+Переключиться на ПК|Switch to PC
+Переключиться на телефон|Switch to phone
+Перемотка трека|Seek track
+Перепривязать по QR|Pair again with QR
+ПК не подключён|PC not connected
+ПК недоступен|PC unavailable
+ПК отвечает · |PC responding ·\s
+ПК сейчас недоступен|PC is unavailable
+ПК|PC
+Плеер и виджеты|Player and widgets
+Плеер телефона|Phone player
+Плеер|Player
+Подключаемся…|Connecting…
+Подключён|Connected
+Подключение|Connection
+Подключи компьютер|Connect your PC
+Подключи ПК к домашней сети или обнови код.|Connect your PC to your home network or refresh the code.
+Подключить ПК|Pair PC
+Подключить|Pair
+Подтверди на ПК|Confirm on your PC
+Подтверди установку в Android.|Confirm installation in Android.
+Подтверждение отвязки телефона|Confirm phone unpairing
+Подтверждено|Confirmed
+Позже|Later
+Показывать обложки|Show artwork
+Помести QR-код из окна CueRelay в рамку|Align the CueRelay QR code with the frame
+Понятно|OK
+После новой привязки прежний доступ будет отозван|Pairing a new phone revokes the current phone’s access
+Последние события|Recent events
+Предыдущий трек|Previous track
+Привязан по сети|Paired on local network
+Привязка не завершена|Pairing incomplete
+Привязка по QR|Pair using QR
+Привязка телефона|Phone pairing
+Приложение|App
+Применить|Apply
+Проверить обновления|Check for updates
+Проверить связь|Test connection
+Проверка через GitHub Releases|Checks GitHub Releases
+Проверяем GitHub…|Checking GitHub…
+Продолжи в установщике Windows.|Continue in Windows Setup.
+Просмотреть или сохранить журнал|View or save the log
+Разрешён|Allowed
+Разреши доступ к камере в настройках или вставь код вручную.|Allow camera access in Settings or paste the code manually.
+Разреши установку для CueRelay в Android, затем снова нажми «Скачать и установить».|Allow CueRelay to install apps in Android settings, then choose “Download and install” again.
+Разреши CueRelay находить активные плееры Android, чтобы управлять ими с ПК.|Allow CueRelay to find active Android players so you can control them from your PC.
+Разрешить управление с ПК|Allow control from PC
+С обложкой · 4 × 2|With artwork · 4 × 2
+Сверь цифры и нажми «Код совпадает». На ПК нажми «Это мой телефон».|Compare the digits and tap “Codes match”. Choose “This is my phone” on the PC.
+Сверь цифры с кодом в CueRelay на телефоне.|Compare these digits with the code in CueRelay on your phone.
+Светлая|Light
+Свой цвет |Custom color\s
+Свой цвет|Custom color
+Связь с компьютером потеряна|Connection to PC lost
+Связь с компьютером|PC connection
+Сейчас ничего не играет|Nothing playing
+Синхронизировать тему и цвет|Sync theme and accent color
+Сиреневый|Violet
+Сканирование QR-кода|QR scanner
+Сканировать QR-код|Scan QR code
+Скачать и установить|Download and install
+Скопировать временный код|Copy temporary code
+Скрыто на ПК|Hidden on PC
+Следующий трек|Next track
+Сменить источник|Switch source
+Сначала разреши CueRelay доступ к уведомлениям.|Give CueRelay notification access first.
+Сохранить журнал|Save log
+Стрелки влево и вправо меняют насыщенность, вверх и вниз — яркость.|Use left and right for saturation and up and down for brightness.
+Стрелки влево и вправо меняют тон.|Use left and right to change hue.
+Строка · 4 × 1|Row · 4 × 1
+Текущая сессия Android|Current Android session
+Текущая сессия Windows|Current Windows session
+Телефон|Phone
+Тема, цвет и плеер|Theme, color and player
+Тема, цвет, плеер и виджеты|Theme, color, player and widgets
+Тема|Theme
+Тёмная|Dark
+Тестовый плеер|Test player
+Только кнопки|Controls only
+Тон|Hue
+Управление в шторке и на экране блокировки|Controls in notifications and on the lock screen
+Управление и быстрый доступ к источникам|Controls and quick access to sources
+Управление телефоном|Phone control
+Управлять|Manage
+Устройство при запуске|Device at startup
+Цвет HEX|HEX color
+Чтобы отозвать доступ на ПК, также нажми «Отвязать телефон» в Windows.|To revoke access on the PC, also choose “Unpair phone” in Windows.
+Чтобы подключиться снова, понадобится новая привязка.|You’ll need to pair again to reconnect.
+Это мой телефон|This is my phone
+Это не мой ПК|This is not my PC
+Это не мой телефон|This is not my phone
+Это твой компьютер?|Is this your computer?
+Это твой телефон?|Is this your phone?
+Этот QR-код больше не действует. Обнови его на ПК.|This QR code has expired. Refresh it on the PC.
+Янтарный|Amber
+QR-код привязки|Pairing QR code
+Windows не смогла сохранить привязку. Проверь доступ к папке данных CueRelay и повтори.|Windows could not save the pairing. Check access to CueRelay’s data folder and try again.
+Язык|Language
+Русский|Russian
+Снижать использование памяти в трее|Save memory in the system tray
+Меньше анимаций|Reduce motion
+ мс| ms
+«{0}» потеряет доступ к управлению воспроизведением. Для повторного подключения понадобится новая привязка.|“{0}” will lose playback control. Pair again to reconnect.
+Выбрать источник|Select source
+Предыдущая страница|Previous page
+Следующая страница|Next page
+Предыдущий источник|Previous source
+Следующий источник|Next source
+Закрыть список|Close list

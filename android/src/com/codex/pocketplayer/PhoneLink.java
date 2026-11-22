@@ -42,6 +42,7 @@ public final class PhoneLink extends Service {
     private final ExecutorService reverseCommands = Executors.newSingleThreadExecutor();
     private final AtomicBoolean phoneUpdateQueued = new AtomicBoolean();
     private volatile boolean running;
+    private boolean foreground, mediaNotification;
     private volatile String discovered, reachable;
     private Pairing pairing;
     private DeskClient client;
@@ -84,7 +85,7 @@ public final class PhoneLink extends Service {
     @Override public void onCreate() {
         super.onCreate();
         NotificationManager notifications = getSystemService(NotificationManager.class);
-        notifications.createNotificationChannel(new NotificationChannel(CHANNEL, "Связь с компьютером",
+        notifications.createNotificationChannel(new NotificationChannel(CHANNEL, UiText.text(this, "Связь с компьютером"),
             NotificationManager.IMPORTANCE_LOW));
         systemMedia = new SystemMedia(this, main, openApp(), (verb, source) -> {
             if (running) commands.execute(() -> execute(verb, source));
@@ -101,7 +102,10 @@ public final class PhoneLink extends Service {
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int id) {
-        startForeground(21, notification());
+        if (!foreground) {
+            startForeground(21, notification());
+            foreground = true;
+        }
         if (running && pairing != connection(this)) {
             running = false;
             stopSelf();
@@ -115,6 +119,7 @@ public final class PhoneLink extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
+        if (intent != null && "surface".equals(intent.getAction())) updateSurfaces();
         if (intent != null && intent.getAction() != null && !"refresh".equals(intent.getAction()) &&
             !"surface".equals(intent.getAction())) {
             String action = intent.getAction();
@@ -129,10 +134,13 @@ public final class PhoneLink extends Service {
         PendingIntent stop = PendingIntent.getService(this, 2, new Intent(this, PhoneLink.class).setAction("stop"),
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification.Builder builder = new Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_play)
-            .setContentTitle("CueRelay").setContentText("Виджеты синхронизируются с компьютером")
-            .setOngoing(true).setOnlyAlertOnce(true).setContentIntent(openApp());
-        if (systemMedia == null || !systemMedia.apply(builder, playback))
-            builder.addAction(new Notification.Action.Builder(null, "Остановить", stop).build());
+            .setContentTitle("CueRelay")
+            .setOnlyAlertOnce(true).setContentIntent(openApp());
+        if (Build.VERSION.SDK_INT >= 31) builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_DEFERRED);
+        mediaNotification = systemMedia != null && systemMedia.apply(builder, playback);
+        builder.setOngoing(mediaNotification);
+        if (!mediaNotification)
+            builder.addAction(new Notification.Action.Builder(null, UiText.text(this, "Остановить"), stop).build());
         return builder.build();
     }
 
@@ -144,7 +152,9 @@ public final class PhoneLink extends Service {
     private void updateSurfaces() {
         PlayerWidget.updateAll(this);
         main.post(() -> {
-            if (running) getSystemService(NotificationManager.class).notify(21, notification());
+            boolean showMedia = Appearance.systemMedia(this) && playback != null && playback.selected != null;
+            if (running && foreground && (mediaNotification || showMedia))
+                getSystemService(NotificationManager.class).notify(21, notification());
         });
     }
 
@@ -234,8 +244,7 @@ public final class PhoneLink extends Service {
             if (!running || !address.equals(reachable)) return;
             boolean reconnected = playback == null;
             accessDenied = false;
-            if (!updated.theme.equals(Appearance.theme(this)) || !updated.accent.equals(Appearance.accentKey(this)))
-                Pairing.prefs(this).edit().putString("theme", updated.theme).putString("accent", updated.accent).apply();
+            Appearance.takeRemote(this, updated);
             showPlayback(updated, Pairing.prefs(this).getString("source", ""));
             if (reconnected) {
                 Diagnostics.record(this, "connection", "connected", null);
@@ -323,13 +332,13 @@ public final class PhoneLink extends Service {
             }
             if ("check-link".equals(action)) {
                 if (address == null) {
-                    main.post(() -> Toast.makeText(this, "ПК сейчас недоступен", Toast.LENGTH_SHORT).show());
+                    main.post(() -> Toast.makeText(this, UiText.text(this, "ПК сейчас недоступен"), Toast.LENGTH_SHORT).show());
                     return;
                 }
                 long started = SystemClock.elapsedRealtime();
                 client.json(address, "/ping", null, true, 2500);
                 long delay = SystemClock.elapsedRealtime() - started;
-                main.post(() -> Toast.makeText(this, "ПК отвечает · " + delay + " мс", Toast.LENGTH_LONG).show());
+                main.post(() -> Toast.makeText(this, UiText.text(this, "ПК отвечает · ") + delay + UiText.text(this, " мс"), Toast.LENGTH_LONG).show());
                 return;
             }
             if (address == null) return;
@@ -350,8 +359,10 @@ public final class PhoneLink extends Service {
                 return;
             }
             if ("theme".equals(action)) {
+                if (!Appearance.sync(this) || playback != null && !playback.syncAppearance) return;
                 client.json(address, "/theme", new JSONObject().put("theme", argument), true, 4000);
             } else if ("accent".equals(action)) {
+                if (!Appearance.sync(this) || playback != null && !playback.syncAppearance) return;
                 client.json(address, "/accent", new JSONObject().put("accent", argument), true, 4000);
             } else if ("volume".equals(action)) {
                 if (argument == null || !argument.matches("[0-9]{1,3}")) return;
@@ -369,9 +380,9 @@ public final class PhoneLink extends Service {
             }
         } catch (DeskClient.Status error) {
             if (error.code == 401) accessDenied = true;
-            else main.post(() -> Toast.makeText(this, "Источник не выполнил команду", Toast.LENGTH_SHORT).show());
+            else main.post(() -> Toast.makeText(this, UiText.text(this, "Источник не выполнил команду"), Toast.LENGTH_SHORT).show());
         } catch (Exception error) {
-            main.post(() -> Toast.makeText(this, "Связь с компьютером потеряна", Toast.LENGTH_SHORT).show());
+            main.post(() -> Toast.makeText(this, UiText.text(this, "Связь с компьютером потеряна"), Toast.LENGTH_SHORT).show());
         }
     }
 
