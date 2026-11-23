@@ -98,7 +98,7 @@ public final class MainActivity extends Activity {
     private boolean tvMode;
     private View tvPad;
     private TextView tvPadNote;
-    private final java.util.List<ImageView> tvKeys = new java.util.ArrayList<>();
+    private final java.util.List<View> tvKeys = new java.util.ArrayList<>();
     private DockTouch pageDock;
     private PageDrag pageDrag;
     private LinearLayout timelinePanel;
@@ -769,40 +769,63 @@ public final class MainActivity extends Activity {
         tvPad = pad;
         pad.setGravity(Gravity.CENTER_HORIZONTAL);
         pad.addView(label(tr("Навигация по телевизору"), 17, text, true));
-        gap(pad, 8);
-        LinearLayout top = row(), middle = row(), bottom = row();
-        pad.addView(top);
-        pad.addView(middle);
-        pad.addView(bottom);
-        tvKey(top, R.drawable.ic_right, -90, "Вверх", "up", false);
-        tvKey(middle, R.drawable.ic_left, 0, "Влево", "left", false);
-        tvKey(middle, R.drawable.ic_check, 0, "Выбрать", "select", true);
-        tvKey(middle, R.drawable.ic_right, 0, "Вправо", "right", false);
-        tvKey(bottom, R.drawable.ic_right, 90, "Вниз", "down", false);
-        menuRow(pad, R.drawable.ic_left, tr("Назад"), "", false, () -> {
-            if (tv.navigation) tv.navigate("back");
-        });
+        gap(pad, 15);
+        int diameter = Math.min(232, Math.max(172, getResources().getConfiguration().screenWidthDp - 88));
+        FrameLayout ring = new FrameLayout(this);
+        ring.setBackground(shape(raised, diameter));
+        pad.addView(ring, new LinearLayout.LayoutParams(dp(diameter), dp(diameter)));
+        int edgeSize = Math.min(58, (diameter - 70) / 2);
+        placeTvKey(ring, R.drawable.ic_right, -90, "Вверх", "up", Gravity.TOP | Gravity.CENTER_HORIZONTAL, edgeSize);
+        placeTvKey(ring, R.drawable.ic_left, 0, "Влево", "left", Gravity.START | Gravity.CENTER_VERTICAL, edgeSize);
+        placeTvKey(ring, R.drawable.ic_right, 0, "Вправо", "right", Gravity.END | Gravity.CENTER_VERTICAL, edgeSize);
+        placeTvKey(ring, R.drawable.ic_right, 90, "Вниз", "down", Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, edgeSize);
+        TextView select = label("OK", 19, onAccent, true);
+        select.setGravity(Gravity.CENTER);
+        select.setContentDescription(tr("Выбрать"));
+        select.setBackground(ripple(accent, 44));
+        select.setOnClickListener(v -> tv.navigate("select"));
+        int centerSize = Math.min(88, diameter - 2 * edgeSize);
+        ring.addView(select, new FrameLayout.LayoutParams(dp(centerSize), dp(centerSize), Gravity.CENTER));
+        tvKeys.add(select);
+
+        gap(pad, 14);
+        LinearLayout actions = row();
+        actions.setGravity(Gravity.CENTER);
+        pad.addView(actions);
+        for (String action : new String[]{"back", "home"}) {
+            boolean home = "home".equals(action);
+            ImageView key = tvKey(home ? R.drawable.ic_home : R.drawable.ic_left, 0, home ? "Домой" : "Назад", action, 13);
+            key.setBackground(ripple(raised, 24));
+            LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(dp(48), dp(48));
+            size.setMargins(dp(6), 0, dp(6), 0);
+            actions.addView(key, size);
+        }
         tvPadNote = label(tr("Включи навигацию в настройках CueRelay на телевизоре."), 13, dim, false);
+        tvPadNote.setGravity(Gravity.CENTER);
+        tvPadNote.setPadding(0, dp(12), 0, 0);
         pad.addView(tvPadNote);
         refreshTvPad();
     }
 
-    private void tvKey(LinearLayout row, int glyph, int rotation, String label, String key, boolean primary) {
-        ImageView button = icon(glyph, tr(label), primary ? onAccent : text, 12);
+    private void placeTvKey(FrameLayout ring, int glyph, int rotation, String label, String key, int gravity, int size) {
+        ImageView button = tvKey(glyph, rotation, label, key, (size - 23) / 2);
+        ring.addView(button, new FrameLayout.LayoutParams(dp(size), dp(size), gravity));
+    }
+
+    private ImageView tvKey(int glyph, int rotation, String label, String key, int padding) {
+        ImageView button = icon(glyph, tr(label), text, padding);
         button.setRotation(rotation);
-        button.setBackground(ripple(primary ? accent : raised, 17));
+        button.setBackground(ripple(Color.TRANSPARENT, 28));
         button.setOnClickListener(v -> tv.navigate(key));
-        LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(dp(46), dp(46));
-        size.setMargins(dp(4), dp(3), dp(4), dp(3));
-        row.addView(button, size);
         tvKeys.add(button);
+        return button;
     }
 
     private void refreshTvPad() {
         if (tvPad == null) return;
         tvPad.setVisibility(tv.paired != null && Pairing.prefs(this).getBoolean("tv-navigation-pad", true) ? View.VISIBLE : View.GONE);
         tvPadNote.setVisibility(tv.navigation ? View.GONE : View.VISIBLE);
-        for (ImageView key : tvKeys)
+        for (View key : tvKeys)
             if (key.isEnabled() != tv.navigation) enabled(key, tv.navigation);
     }
 
@@ -1505,16 +1528,7 @@ public final class MainActivity extends Activity {
         badge.setBounds(0, 0, dp(37), dp(37));
         control.setCompoundDrawablesRelative(badge, null, null, null);
         control.setCompoundDrawablePadding(dp(11));
-        android.graphics.drawable.StateListDrawable thumb = new android.graphics.drawable.StateListDrawable();
-        thumb.addState(new int[]{android.R.attr.state_checked}, switchThumb(onAccent));
-        thumb.addState(new int[0], switchThumb(dim));
-        control.setThumbDrawable(thumb);
-        control.setTrackDrawable(switchPiece(50, 30, accent, Appearance.mix(raised, dim, .2)));
-        control.setThumbTintList(null);
-        control.setTrackTintList(null);
-        control.setShowText(false);
-        control.setSplitTrack(false);
-        control.setSwitchMinWidth(dp(50));
+        CueSwitch.style(control, accent, onAccent, raised, dim);
         control.setSwitchPadding(dp(12));
         control.setGravity(Gravity.CENTER_VERTICAL);
         control.setPadding(dp(8), dp(5), dp(10), dp(5));
@@ -1543,31 +1557,6 @@ public final class MainActivity extends Activity {
         addSettingsRow(list, control, panel);
     }
 
-    private android.graphics.drawable.Drawable switchThumb(int color) {
-        return new android.graphics.drawable.Drawable() {
-            private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-            @Override public int getIntrinsicWidth() { return dp(30); }
-            @Override public int getIntrinsicHeight() { return dp(30); }
-            @Override public void draw(Canvas canvas) {
-                paint.setColor(color);
-                canvas.drawCircle(getBounds().exactCenterX(), getBounds().exactCenterY(), dp(12), paint);
-            }
-            @Override public void setAlpha(int alpha) { }
-            @Override public void setColorFilter(android.graphics.ColorFilter filter) { }
-            @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
-        };
-    }
-
-    private android.graphics.drawable.StateListDrawable switchPiece(int width, int height, int checked, int unchecked) {
-        android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
-        GradientDrawable on = shape(checked, height / 2);
-        GradientDrawable off = shape(unchecked, height / 2);
-        on.setSize(dp(width), dp(height));
-        off.setSize(dp(width), dp(height));
-        states.addState(new int[]{android.R.attr.state_checked}, on);
-        states.addState(new int[0], off);
-        return states;
-    }
 
     private void addSettingsRow(LinearLayout list, View row, int color) {
         row.setTag(color);

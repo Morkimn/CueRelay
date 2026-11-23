@@ -263,3 +263,16 @@ Windows не смогла сохранить привязку. Проверь д
 Добавить пульт по QR|Add a remote by QR
 Отключить все пульты|Disconnect all remotes
 Привязано пультов: {0}|Paired remotes: {0}
+Домой|Home
+Пульт для телевизора|TV remote
+Управление с телефона|Control from your phone
+Отключить все пульты?|Disconnect all remotes?
+Отключить|Disconnect
+Воспроизведение|Playback
+Разрешить навигацию с телефона|Allow navigation from a phone
+Не удалось отключить пульты.|Could not disconnect the remotes.
+Системный доступ разрешён|System access granted
+Отсканируй QR-код|Scan the QR code
+Настройки → Подключение → Телевизор|Settings → Connection → TV
+Один QR-код на каждый телефон|One QR code per phone
+Пульт готов|Remote ready

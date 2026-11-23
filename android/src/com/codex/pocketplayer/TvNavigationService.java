@@ -20,6 +20,7 @@ public final class TvNavigationService extends AccessibilityService {
     boolean press(String key) {
         if (!Pairing.prefs(this).getBoolean(ENABLED, false)) return false;
         if ("back".equals(key)) return performGlobalAction(GLOBAL_ACTION_BACK);
+        if ("home".equals(key)) return performGlobalAction(GLOBAL_ACTION_HOME);
         final int direction;
         switch (key) {
             case "up": direction = View.FOCUS_UP; break;
