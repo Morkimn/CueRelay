@@ -1,0 +1,4 @@
+<resources>
+    <string name="tv_navigation_name">CueRelay · навигация ТВ</string>
+    <string name="tv_navigation_description">Кнопки направления, выбора и возврата для привязанного телефона. Содержимое окон не передаётся.</string>
+</resources>

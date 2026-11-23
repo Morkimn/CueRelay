@@ -241,3 +241,25 @@ Windows не смогла сохранить привязку. Проверь д
 Переключиться на телевизор|Switch to TV
 Привязка и управление по локальной сети|Pair and control over your local network
 Открой CueRelay на телевизоре и покажи QR-код.|Open CueRelay on the TV and show its QR code.
+Навигация по телевизору|TV navigation
+Вверх|Up
+Влево|Left
+Выбрать|Select
+Вправо|Right
+Вниз|Down
+Включи навигацию в настройках CueRelay на телевизоре.|Enable navigation in CueRelay settings on your TV.
+Громкость телевизора|TV volume
+Нет доступа к плеерам|No access to media players
+Текущая сессия телевизора|Current TV media session
+Подключить телевизор|Connect TV
+Показывать кнопки навигации|Show navigation controls
+Отвязать телевизор?|Unpair TV?
+Разреши CueRelay доступ к камере.|Allow CueRelay to use the camera.
+Настройки телевизора|TV settings
+Запускать пульт после включения ТВ|Start the remote service when the TV boots
+Передавать обложки|Share artwork
+Разреши доступ к навигации на ТВ.|Allow navigation access in TV settings.
+Доступ к навигации|Navigation access
+Добавить пульт по QR|Add a remote by QR
+Отключить все пульты|Disconnect all remotes
+Привязано пультов: {0}|Paired remotes: {0}

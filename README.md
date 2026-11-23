@@ -28,7 +28,11 @@ Use **Настройки → Диагностика** to view or save a JSON Lin
 
 ## TVs
 
-Install the same CueRelay Android build on the phone and Android TV or Google TV. On the TV, open CueRelay, grant notification access and choose **Show QR code**. On the phone, use the TV switch above the widget button in the Player, then choose **Scan QR code**. The phone controls the TV directly on the local network. The PC may be off and does not need to be paired.
+Install the same CueRelay Android build on the phone and Android TV or Google TV. On the TV, open CueRelay, grant notification access and choose **Add a remote by QR**. On the phone, open **Settings → Connection → TV → Scan QR code**. The device button below the widget button switches the Player and Sources between PC and TV. The phone controls the TV directly on the local network, even when the PC is off.
+
+On the TV, **TV settings** lets you configure startup, artwork sharing, and navigation. To use the directional pad on the phone, turn on **TV navigation** and enable CueRelay under **Navigation access**. Directional navigation depends on whether the app on the TV exposes focusable controls to Android. The navigation buttons can be hidden in the phone's TV settings.
+
+Choose **Add a remote by QR** on the TV once for each phone. A TV can remember up to 16 phones. Unpairing from a phone disconnects only that phone. **Disconnect all remotes** on the TV revokes all paired phones and stops the remote service.
 
 The TV shares the playback and seek controls advertised by active Android media sessions, plus its Android media volume when adjustable. The connection uses TLS with a pinned TV certificate. The QR carries a short-lived single-use invitation. The TV can revoke the paired phone with **Disable remote**. The companion can run in the background after setup. An IP address change can require scanning a new code. ADB is only needed for development or sideloading when the TV has no other means to install the APK. [Android media sessions](https://developer.android.com/reference/android/media/session/MediaSessionManager)
 

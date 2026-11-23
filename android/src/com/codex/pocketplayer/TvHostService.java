@@ -43,9 +43,14 @@ public final class TvHostService extends Service {
     private static final String ALIAS = "cuerelay-tv-ec";
     private static final String CHANNEL = "cuerelay-tv-control";
     private static final String HASH = "tv-controller-hash";
+    private static final String CONTROLLERS = "tv-controller-hashes";
+    private static final int MAX_CONTROLLERS = 16;
     static final String ENABLED = "tv-host-enabled";
+    static final String KEEP_AT_BOOT = "tv-start-at-boot";
+    static final String INCLUDE_COVERS = "tv-include-artwork";
     static volatile TvHostService instance;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final Handler ui = new Handler(Looper.getMainLooper());
     private volatile SSLServerSocket server;
     private volatile SSLSocket active;
     private volatile boolean running = true;
@@ -61,7 +66,7 @@ public final class TvHostService extends Service {
     @Override public void onCreate() {
         super.onCreate();
         instance = this;
-        media = new PhoneMedia.Exchange(this, new Handler(Looper.getMainLooper()), () -> {}, true);
+        media = new PhoneMedia.Exchange(this, ui, () -> {}, true);
         worker.execute(this::serve);
     }
 
@@ -93,7 +98,23 @@ public final class TvHostService extends Service {
 
     synchronized void revoke() {
         invitation = null;
-        Pairing.prefs(this).edit().remove(HASH).commit();
+        if (!Pairing.prefs(this).edit().remove(HASH).remove(CONTROLLERS).commit())
+            throw new IllegalStateException("Could not revoke TV controllers");
+    }
+
+    static int controllerCount(Context context) { return controllers(context).size(); }
+
+    private static java.util.Set<String> controllers(Context context) {
+        android.content.SharedPreferences prefs = Pairing.prefs(context);
+        java.util.Set<String> keys = new java.util.HashSet<>(prefs.getStringSet(CONTROLLERS, java.util.Collections.emptySet()));
+        String old = prefs.getString(HASH, null);
+        if (old != null) keys.add(old);
+        return keys;
+    }
+
+    private void saveControllers(java.util.Set<String> keys) {
+        if (!Pairing.prefs(this).edit().putStringSet(CONTROLLERS, keys).remove(HASH).commit())
+            throw new IllegalStateException("Could not save TV controllers");
     }
 
     private void serve() {
@@ -183,29 +204,55 @@ public final class TvHostService extends Service {
         return null;
     }
 
-    private synchronized JSONObject handle(JSONObject request) throws Exception {
+    private JSONObject handle(JSONObject request) throws Exception {
         String operation = request.optString("op"), token = request.optString("token");
         JSONObject denied = new JSONObject().put("error", "unauthorized");
         if (!TvLink.validToken(token)) return denied;
-        if ("pair".equals(operation)) {
-            if (SystemClock.elapsedRealtime() >= expires || !TvLink.matches(invitation, token)) return denied;
-            String credential = TvLink.randomToken();
-            if (!Pairing.prefs(this).edit().putString(HASH, hash(credential)).commit()) throw new IllegalStateException();
-            invitation = null;
-            return new JSONObject().put("token", credential).put("device", PhoneMedia.deviceName(this));
+        synchronized (this) {
+            java.util.Set<String> keys = controllers(this);
+            if ("pair".equals(operation)) {
+                if (SystemClock.elapsedRealtime() >= expires || !TvLink.matches(invitation, token)) return denied;
+                if (keys.size() >= MAX_CONTROLLERS) return new JSONObject().put("error", "controller_limit");
+                String credential = TvLink.randomToken();
+                keys.add(hash(credential));
+                saveControllers(keys);
+                invitation = null;
+                return new JSONObject().put("token", credential).put("device", PhoneMedia.deviceName(this));
+            }
+            String key = hash(token);
+            if (keys.stream().noneMatch(saved -> TvLink.matches(saved, key))) return denied;
+            if ("forget".equals(operation)) {
+                keys.remove(key);
+                saveControllers(keys);
+                return new JSONObject();
+            }
         }
-        if (!TvLink.matches(Pairing.prefs(this).getString(HASH, null), hash(token))) return denied;
-        if ("forget".equals(operation)) {
-            revoke();
-            return new JSONObject();
+        boolean navigation = TvNavigationService.instance != null &&
+            Pairing.prefs(this).getBoolean(TvNavigationService.ENABLED, false);
+        if ("navigation".equals(operation)) {
+            JSONObject command = request.optJSONObject("command");
+            if (!navigation || command == null || !navigate(command.optString("key")))
+                return new JSONObject().put("error", "unavailable");
         }
-        JSONObject state = media.report();
+        JSONObject state = media.report().put("navigation", navigation);
         if ("command".equals(operation)) {
             JSONObject command = request.optJSONObject("command");
             if (command == null || !media.apply(new JSONObject().put("commands", new JSONArray().put(command))))
                 return new JSONObject().put("error", "unavailable");
-        } else if (!"state".equals(operation)) return denied;
+        } else if (!"state".equals(operation) && !"navigation".equals(operation)) return denied;
         return state;
+    }
+
+    private boolean navigate(String key) {
+        java.util.concurrent.CompletableFuture<Boolean> result = new java.util.concurrent.CompletableFuture<>();
+        ui.post(() -> {
+            if (result.isDone()) return;
+            TvNavigationService service = TvNavigationService.instance;
+            try { result.complete(service != null && service.press(key)); }
+            catch (RuntimeException error) { result.complete(false); }
+        });
+        try { return result.get(1200, java.util.concurrent.TimeUnit.MILLISECONDS); }
+        catch (Exception error) { result.cancel(false); return false; }
     }
 
     private static String hash(String token) throws Exception {

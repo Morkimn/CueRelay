@@ -144,7 +144,7 @@ public final class PhoneMedia extends NotificationListenerService {
                 } catch (SecurityException ignored) { }
             }
             Set<String> blocked = Pairing.prefs(context).getStringSet(BLOCKED, Collections.emptySet());
-            boolean includeCovers = !tv && Pairing.prefs(context).getBoolean(COVERS, true);
+            boolean includeCovers = Pairing.prefs(context).getBoolean(tv ? TvHostService.INCLUDE_COVERS : COVERS, true);
             if (!includeCovers) covers.clear();
             List<MediaSession.Token> kept = new ArrayList<>();
             for (MediaController item : active) {
@@ -176,7 +176,10 @@ public final class PhoneMedia extends NotificationListenerService {
                     .put("duration", Math.max(0, duration)).put("position", Math.max(0, position)).put("rate", rate);
                 RatingActions ratings = ratingActions(item, state);
                 source.put("rating", ratings.supported).put("ratingSelected", ratings.selected);
-                if (includeCovers) source.put("cover", cover(token, item.getPackageName(), title, info));
+                if (includeCovers) {
+                    String encoded = cover(token, item.getPackageName(), title, info);
+                    if (!tv || encoded.length() <= 12000) source.put("cover", encoded);
+                }
                 sources.put(source);
                 sent.put(id, item);
             }

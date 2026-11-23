@@ -375,7 +375,7 @@ internal sealed class Dashboard : W.Window
         var playbackRow = new C.Grid { Margin = new W.Thickness(0, 9, 0, 0) };
         playbackRow.ColumnDefinitions.Add(new C.ColumnDefinition());
         playbackRow.ColumnDefinitions.Add(new C.ColumnDefinition { Width = W.GridLength.Auto });
-        playbackRow.ColumnDefinitions.Add(new C.ColumnDefinition { MinWidth = 42 });
+        playbackRow.ColumnDefinitions.Add(new C.ColumnDefinition { MinWidth = 46 });
         var controls = new C.StackPanel { Orientation = C.Orientation.Horizontal };
         const int trackSize = 46, ratingSize = 42;
         previous = IconButton(UiText.Text("Предыдущий трек"), Previous, trackSize, trackSize, false, () => Command("previous"));
@@ -384,7 +384,7 @@ internal sealed class Dashboard : W.Window
         SpringPress(toggle);
         playGlyph = (W.FrameworkElement)toggle.Content;
         playGlyph.RenderTransformOrigin = new W.Point(.5, .5);
-        toggle.Margin = new W.Thickness(8, 0, 8, 0);
+        toggle.Margin = new W.Thickness(7, 0, 7, 0);
         next = IconButton(UiText.Text("Следующий трек"), Next, trackSize, trackSize, false, () => Command("next"));
         dislike = IconButton(UiText.Text("Дизлайк"), "ic_dislike", ratingSize, ratingSize, false, () => Command("dislike"));
         like = IconButton(UiText.Text("Лайк"), "ic_like", ratingSize, ratingSize, false, () => Command("like"));
@@ -667,7 +667,7 @@ internal sealed class Dashboard : W.Window
 
     private void BuildVolume(C.Grid playbackRow)
     {
-        volumeButton = IconButton(UiText.Text("Громкость"), "ic_volume", 40, 40, false, () => OpenVolume(!volumeButton.IsMouseOver));
+        volumeButton = IconButton(UiText.Text("Громкость"), "ic_volume", 44, 44, false, () => OpenVolume(!volumeButton.IsMouseOver));
         volumeButton.Tag = new W.CornerRadius(15);
         volumeButton.ToolTip = null;
         volumeButton.HorizontalAlignment = W.HorizontalAlignment.Right;
@@ -1527,9 +1527,6 @@ internal sealed class Dashboard : W.Window
         }
         var selected = usePhone ? chosenPhoneSource : chosenSource;
         var sources = usePhone ? phone.Current.Sources : media.Current.Sources;
-        bool automatic = selected is null || !sources.Any(source => source.Id == selected);
-        content.Children.Add(SettingsGroup(SettingsRow(UiText.Text("Автовыбор"), usePhone ? UiText.Text("Текущая сессия Android") : UiText.Text("Текущая сессия Windows"),
-            "ic_auto", automatic ? "ic_check" : "ic_right", () => Set(null), automatic)));
         if (sources.Length == 0)
         {
             var empty = Text(UiText.Text("Нет активных источников"), 14, palette.Muted);
@@ -1537,6 +1534,9 @@ internal sealed class Dashboard : W.Window
             content.Children.Add(SettingsGroup(empty));
             return;
         }
+        bool automatic = selected is null || !sources.Any(source => source.Id == selected);
+        content.Children.Add(SettingsGroup(SettingsRow(UiText.Text("Автовыбор"), usePhone ? UiText.Text("Текущая сессия Android") : UiText.Text("Текущая сессия Windows"),
+            "ic_auto", automatic ? "ic_check" : "ic_right", () => Set(null), automatic)));
         var grid = new C.Primitives.UniformGrid { Columns = 2, Margin = new W.Thickness(-4, 10, -4, 0) };
         foreach (var source in sources)
         {

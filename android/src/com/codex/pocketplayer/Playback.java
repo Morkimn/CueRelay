@@ -40,6 +40,33 @@ final class Playback {
             data.optString("current"), sources, null, null, data.optInt("volume", -1), data.optBoolean("syncAppearance", true));
     }
 
+    static Playback fromTv(JSONObject data, String preferred, Playback previous) throws org.json.JSONException {
+        JSONArray items = data.getJSONArray("sources");
+        List<Source> sources = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        String firstPlaying = "";
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject item = items.getJSONObject(i);
+            long duration = item.optLong("duration");
+            if (duration > 0) item.put("timeline", new JSONObject().put("durationMs", duration)
+                .put("positionMs", item.optLong("position")).put("updatedAtMs", now)
+                .put("rate", item.optDouble("rate", 0)).put("canSeek", item.optBoolean("seek")));
+            item.put("art", item.optString("cover"));
+            Source source = new Source(item);
+            sources.add(source);
+            if (source.playing && firstPlaying.isEmpty()) firstPlaying = source.id;
+        }
+        Playback result = new Playback(now, "", "", data.optString("device"), firstPlaying, sources, null, null,
+            data.optInt("volume", -1), false).select(preferred, null);
+        String artwork = result.artworkKey();
+        if (artwork.isEmpty()) return result;
+        if (previous != null && previous.art != null && artwork.equals(previous.artworkKey())) return result.withArtwork(previous.art);
+        try {
+            byte[] image = android.util.Base64.decode(artwork, android.util.Base64.DEFAULT);
+            return result.withArtwork(android.graphics.BitmapFactory.decodeByteArray(image, 0, image.length));
+        } catch (IllegalArgumentException invalid) { return result; }
+    }
+
     Playback select(String id, Bitmap art) {
         Source source = null;
         for (Source candidate : sources) if (candidate.id.equals(id)) { source = candidate; break; }
@@ -60,7 +87,7 @@ final class Playback {
         final String id, app, title, artist, artwork;
         final boolean playing, toggle, previous, next;
         final Timeline timeline;
-        Source(JSONObject data) throws Exception {
+        Source(JSONObject data) throws org.json.JSONException {
             id = data.getString("id");
             app = data.getString("app");
             title = data.optString("title");

@@ -52,8 +52,9 @@ public final class MainActivity extends Activity {
     private static final int SCAN = 10, CAMERA = 11, EXPORT_LOG = 13;
     private static final int SHEET_SIDE_INSET = 18, SHEET_BOTTOM_INSET = 9;
     private static final int DOCK_HEIGHT = 64, DOCK_BOTTOM = 8;
-    private static final int WIDGET_BUTTON_SIZE = 54, WIDGET_BUTTON_GAP = 24;
+    private static final int TARGET_BUTTON_SIZE = 54, WIDGET_BUTTON_SIZE = 44, WIDGET_BUTTON_GAP = 24;
     private static final String VOLUME_KEYS = "remote-volume-keys";
+    private static final int SCAN_TV = 28, CAMERA_TV = 29;
     private Float dockReleaseX;
     private enum Page {
         PLAYER("Плеер", R.drawable.ic_note),
@@ -93,6 +94,11 @@ public final class MainActivity extends Activity {
     private float swipeX, swipeY;
     private boolean pageSwipe, volumeKeyHeld;
     private View dockSurface, widgetFab, tvFab;
+    private TvController tv;
+    private boolean tvMode;
+    private View tvPad;
+    private TextView tvPadNote;
+    private final java.util.List<ImageView> tvKeys = new java.util.ArrayList<>();
     private DockTouch pageDock;
     private PageDrag pageDrag;
     private LinearLayout timelinePanel;
@@ -111,9 +117,11 @@ public final class MainActivity extends Activity {
     private Dialog pairDialog;
     private Point tapOrigin, appearanceOrigin;
     private final Runnable sendVolume = () -> {
-        Playback state = PhoneLink.playback;
-        if (state != null && state.volume >= 0 && pendingVolume >= 0)
-            PhoneLink.start(this, "volume", Integer.toString(pendingVolume));
+        Playback state = targetPlayback();
+        if (state != null && state.volume >= 0 && pendingVolume >= 0) {
+            if (tvMode) tv.send("volume", null, pendingVolume);
+            else PhoneLink.start(this, "volume", Integer.toString(pendingVolume));
+        }
     };
     private final Runnable ticker = new Runnable() {
         @Override public void run() { refresh(); ui.postDelayed(this, 130); }
@@ -124,12 +132,14 @@ public final class MainActivity extends Activity {
         regularFont = getResources().getFont(R.font.google_sans_regular);
         mediumFont = getResources().getFont(R.font.google_sans_medium);
         boldFont = getResources().getFont(R.font.google_sans_bold);
+        tv = new TvController(this, ui);
         Diagnostics.record(this, "app", "started", null);
         render(null);
     }
 
     @Override public void onResume() {
         super.onResume();
+        tv.polling(tvMode);
         if (!BuildProfile.DEV && android.os.SystemClock.elapsedRealtime() >= nextUpdateCheck) checkUpdates();
         if (PhoneLink.connection(this) != null) {
             PhoneLink.start(this, page == Page.SETTINGS ? "phone-settings" : "refresh", null);
@@ -139,6 +149,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override public void onPause() {
+        tv.polling(false);
         if (pageDrag != null) completeDrag(pageDrag);
         dismissVolume();
         ui.removeCallbacks(ticker);
@@ -153,6 +164,7 @@ public final class MainActivity extends Activity {
         if (activePair != null) activePair.cancelled = true;
         executor.shutdownNow();
         updatesExecutor.shutdownNow();
+        tv.close();
         super.onDestroy();
     }
 
@@ -175,13 +187,22 @@ public final class MainActivity extends Activity {
                 scroll.post(() -> scroll.scrollTo(0, scrollY));
             }
         }
-        Playback state = PhoneLink.playback;
+        Playback state = targetPlayback();
         if (state != last) updatePlayback(state);
-        else if (paired && page == Page.PLAYER) {
+        else if ((paired || tvMode) && page == Page.PLAYER) {
             if (state == null) connectionStatus(null);
             refreshTimeline(state == null ? null : state.selected);
             refreshVolume(state);
         }
+        refreshTvPad();
+    }
+
+    private Playback targetPlayback() { return tvMode ? tv.playback : PhoneLink.playback; }
+
+    private void switchTarget() {
+        tvMode = !tvMode;
+        tv.polling(tvMode);
+        render(null);
     }
 
     @Override public void onBackPressed() {
@@ -198,7 +219,7 @@ public final class MainActivity extends Activity {
             return true;
         }
         Playback state = PhoneLink.playback;
-        if (event.getAction() != KeyEvent.ACTION_DOWN || !paired || state == null || state.volume < 0 ||
+        if (event.getAction() != KeyEvent.ACTION_DOWN || tvMode || !paired || state == null || state.volume < 0 ||
             !Pairing.prefs(this).getBoolean(VOLUME_KEYS, false)) return super.dispatchKeyEvent(event);
         volumeKeyHeld = true;
         int level = android.os.SystemClock.elapsedRealtime() < volumeQuietUntil && pendingVolume >= 0 ? pendingVolume : state.volume;
@@ -213,7 +234,7 @@ public final class MainActivity extends Activity {
             if (pageDrag != null) completeDrag(pageDrag);
             swipeX = event.getRawX();
             swipeY = event.getRawY();
-            pageSwipe = paired && sheet == null && (volumePopup == null || !volumePopup.isShowing()) &&
+            pageSwipe = sheet == null && (volumePopup == null || !volumePopup.isShowing()) &&
                 within(pageScroll, swipeX, swipeY) && !within(dockSurface, swipeX, swipeY) &&
                 (page != Page.PLAYER || !within(seek, swipeX, swipeY));
         } else if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN) {
@@ -316,7 +337,7 @@ public final class MainActivity extends Activity {
         if (widgetFab != null) widgetFab.setVisibility(View.VISIBLE);
         if (tvFab != null) tvFab.setVisibility(View.VISIBLE);
         if (pageDock != null) pageDock.place(pageDock.tabs.getChildAt(page.ordinal()).getLeft());
-        updatePlayback(PhoneLink.playback);
+        updatePlayback(targetPlayback());
     }
 
     private static final class PageDrag {
@@ -355,6 +376,8 @@ public final class MainActivity extends Activity {
     private void render(Point origin) {
         widgetFab = null;
         tvFab = null;
+        tvPad = null;
+        tvKeys.clear();
         pageDock = null;
         dismissVolume();
         ui.removeCallbacks(sendVolume);
@@ -364,7 +387,6 @@ public final class MainActivity extends Activity {
         renderedAccent = Appearance.accentKey(this);
         Pairing connection = PhoneLink.connection(this);
         paired = connection != null;
-        if (!paired) page = Page.PLAYER;
         Page from = previousPage;
         previousPage = null;
         int scrollY = from == null && pageScroll != null ? pageScroll.getScrollY() : 0;
@@ -407,8 +429,8 @@ public final class MainActivity extends Activity {
         scroll.setFillViewport(true);
         content = column();
         int dockSpace = DOCK_HEIGHT + DOCK_BOTTOM;
-        int bottomSpace = !paired ? 74 : page == Page.PLAYER
-            ? dockSpace + WIDGET_BUTTON_GAP + WIDGET_BUTTON_SIZE + 64 : dockSpace + 19;
+        int bottomSpace = page == Page.PLAYER ? dockSpace + WIDGET_BUTTON_GAP + TARGET_BUTTON_SIZE +
+            (paired ? WIDGET_BUTTON_SIZE + 23 : 14) : dockSpace + 19;
         content.setPadding(dp(18), dp(18), dp(18), dp(bottomSpace));
         scroll.addView(content);
         root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
@@ -424,25 +446,19 @@ public final class MainActivity extends Activity {
         }
         TextView name = label(playerPage ? BuildProfile.TITLE : tr(page.label), playerPage ? 34 : 36, text, true);
         name.setLetterSpacing(-0.027f);
-        header.addView(name, paired && playerPage ? new LinearLayout.LayoutParams(-2, -2)
+        header.addView(name, (paired || tvMode) && playerPage ? new LinearLayout.LayoutParams(-2, -2)
             : new LinearLayout.LayoutParams(0, -2, 1));
         status = label("", 13, dim, true);
         status.setPadding(dp(11), dp(7), dp(11), dp(7));
         status.setBackground(shape(Appearance.mix(panel, accent, .10), 20));
         status.setMaxLines(2);
         status.setEllipsize(TextUtils.TruncateAt.END);
-        if (paired && playerPage) {
+        if ((paired || tvMode) && playerPage) {
             FrameLayout statusSlot = new FrameLayout(this);
             statusSlot.addView(status, new FrameLayout.LayoutParams(-2, -2, Gravity.END | Gravity.CENTER_VERTICAL));
             LinearLayout.LayoutParams statusSize = new LinearLayout.LayoutParams(0, -2, 1);
             statusSize.setMarginStart(dp(10));
             header.addView(statusSlot, statusSize);
-        }
-        if (!paired) {
-            ImageView settings = icon(R.drawable.ic_settings, tr("Настройки"), text, 11);
-            settings.setBackground(ripple(panel, 22));
-            settings.setOnClickListener(v -> settings());
-            header.addView(settings, new LinearLayout.LayoutParams(dp(46), dp(46)));
         }
         content.addView(header);
         updateNotice = button("", true, this::updatesPanel);
@@ -451,46 +467,54 @@ public final class MainActivity extends Activity {
         content.addView(updateNotice, updateSize);
         paintUpdateNotice();
 
-        if (!paired) {
+        if (!paired && !tvMode && playerPage) {
             gap(content, 8);
             content.addView(status, new LinearLayout.LayoutParams(-2, -2));
         }
         gap(content, 17);
-        if (!paired) {
+        if (!paired && !tvMode && playerPage) {
             renderPairing();
         } else if (page == Page.PLAYER) {
             renderPlayer();
-            ImageView add = icon(R.drawable.ic_add, tr("Добавить виджет"), onAccent, 15);
-            add.setBackground(ripple(accent, 20));
-            add.setElevation(dp(4));
+            if (tvMode && tv.paired == null) {
+                gap(content, 12);
+                content.addView(button(tr("Подключить телевизор"), true, this::tvSettings), full(48));
+            }
+        }
+        if (playerPage && paired) {
+            ImageView add = icon(R.drawable.ic_add, tr("Добавить виджет"), dim, 11);
+            add.setBackground(ripple(Appearance.mix(background, panel, .55), 15));
             add.setOnClickListener(v -> gallery());
             springPress(add);
             FrameLayout.LayoutParams anchor = new FrameLayout.LayoutParams(dp(WIDGET_BUTTON_SIZE), dp(WIDGET_BUTTON_SIZE),
                 Gravity.END | Gravity.BOTTOM);
-            anchor.setMarginEnd(dp(18));
-            anchor.bottomMargin = dp(dockSpace + WIDGET_BUTTON_GAP);
+            anchor.setMarginEnd(dp(18 + (TARGET_BUTTON_SIZE - WIDGET_BUTTON_SIZE) / 2));
+            anchor.bottomMargin = dp(dockSpace + WIDGET_BUTTON_GAP + TARGET_BUTTON_SIZE + 9);
             root.addView(add, anchor);
             widgetFab = add;
-        } else if (page == Page.SOURCES) {
+        }
+        if (page == Page.SOURCES) {
             sourceSignature = null;
             sourcesGrid = column();
             content.addView(sourcesGrid, new LinearLayout.LayoutParams(-1, -2));
-        } else {
+        } else if (page == Page.SETTINGS) {
             settingsContent(content);
         }
         if (playerPage) {
-            ImageView tv = icon(R.drawable.ic_tv, tr("Переключиться на телевизор"), text, 11);
-            tv.setBackground(ripple(raised, 17));
-            tv.setElevation(dp(4));
-            tv.setOnClickListener(v -> tvRemote());
-            springPress(tv);
-            FrameLayout.LayoutParams anchor = new FrameLayout.LayoutParams(dp(46), dp(46), Gravity.END | Gravity.BOTTOM);
-            anchor.setMarginEnd(dp(22));
-            anchor.bottomMargin = dp(paired ? dockSpace + WIDGET_BUTTON_GAP + WIDGET_BUTTON_SIZE + 9 : 18);
-            root.addView(tv, anchor);
-            tvFab = tv;
+            ImageView target = icon(tvMode ? R.drawable.ic_tv : R.drawable.ic_monitor,
+                tr(tvMode ? "Переключиться на ПК" : "Переключиться на телевизор"), tvMode ? onAccent : text, 13);
+            target.setBackground(ripple(tvMode ? accent : raised, 20));
+            target.setSelected(tvMode);
+            target.setElevation(dp(4));
+            target.setOnClickListener(v -> switchTarget());
+            springPress(target);
+            FrameLayout.LayoutParams anchor = new FrameLayout.LayoutParams(dp(TARGET_BUTTON_SIZE), dp(TARGET_BUTTON_SIZE), Gravity.END | Gravity.BOTTOM);
+            anchor.setMarginEnd(dp(18));
+            anchor.bottomMargin = dp(dockSpace + WIDGET_BUTTON_GAP);
+            root.addView(target, anchor);
+            tvFab = target;
         }
-        if (paired) addDock(root, pageDrag == null ? from : null);
+        addDock(root, pageDrag == null ? from : null);
         if (activitySurface == null) {
             activitySurface = new FrameLayout(this);
             setContentView(activitySurface);
@@ -504,7 +528,7 @@ public final class MainActivity extends Activity {
             scroll.animate().alpha(1).translationX(0).setDuration(280)
                 .setInterpolator(new PathInterpolator(.18f, .8f, .24f, 1f)).start();
         }
-        updatePlayback(PhoneLink.playback);
+        updatePlayback(targetPlayback());
     }
 
     private void addDock(FrameLayout root, Page from) {
@@ -711,7 +735,7 @@ public final class MainActivity extends Activity {
         previous = icon(R.drawable.ic_previous, tr("Предыдущий трек"), text, 13);
         previous.setBackground(ripple(raised, 17));
         previous.setOnClickListener(v -> action("previous"));
-        LinearLayout.LayoutParams previousSize = new LinearLayout.LayoutParams(dp(skipWidth), dp(48));
+        LinearLayout.LayoutParams previousSize = new LinearLayout.LayoutParams(dp(skipWidth), dp(skipWidth));
         controls.addView(previous, previousSize);
         toggle = (ViewFlipper) getLayoutInflater().inflate(R.layout.widget_toggle, controls, false);
         GradientDrawable playShape = shape(accent, 26);
@@ -731,16 +755,61 @@ public final class MainActivity extends Activity {
         next = icon(R.drawable.ic_next, tr("Следующий трек"), text, 13);
         next.setBackground(ripple(raised, 17));
         next.setOnClickListener(v -> action("next"));
-        controls.addView(next, new LinearLayout.LayoutParams(dp(skipWidth), dp(48)));
+        controls.addView(next, new LinearLayout.LayoutParams(dp(skipWidth), dp(skipWidth)));
         FrameLayout playbackRow = new FrameLayout(this);
         playbackRow.addView(controls, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
         addVolume(playbackRow);
         card.addView(playbackRow, new LinearLayout.LayoutParams(-1, -2));
+        if (tvMode) addTvPad();
+    }
+
+    private void addTvPad() {
+        gap(content, 12);
+        LinearLayout pad = card(content);
+        tvPad = pad;
+        pad.setGravity(Gravity.CENTER_HORIZONTAL);
+        pad.addView(label(tr("Навигация по телевизору"), 17, text, true));
+        gap(pad, 8);
+        LinearLayout top = row(), middle = row(), bottom = row();
+        pad.addView(top);
+        pad.addView(middle);
+        pad.addView(bottom);
+        tvKey(top, R.drawable.ic_right, -90, "Вверх", "up", false);
+        tvKey(middle, R.drawable.ic_left, 0, "Влево", "left", false);
+        tvKey(middle, R.drawable.ic_check, 0, "Выбрать", "select", true);
+        tvKey(middle, R.drawable.ic_right, 0, "Вправо", "right", false);
+        tvKey(bottom, R.drawable.ic_right, 90, "Вниз", "down", false);
+        menuRow(pad, R.drawable.ic_left, tr("Назад"), "", false, () -> {
+            if (tv.navigation) tv.navigate("back");
+        });
+        tvPadNote = label(tr("Включи навигацию в настройках CueRelay на телевизоре."), 13, dim, false);
+        pad.addView(tvPadNote);
+        refreshTvPad();
+    }
+
+    private void tvKey(LinearLayout row, int glyph, int rotation, String label, String key, boolean primary) {
+        ImageView button = icon(glyph, tr(label), primary ? onAccent : text, 12);
+        button.setRotation(rotation);
+        button.setBackground(ripple(primary ? accent : raised, 17));
+        button.setOnClickListener(v -> tv.navigate(key));
+        LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(dp(46), dp(46));
+        size.setMargins(dp(4), dp(3), dp(4), dp(3));
+        row.addView(button, size);
+        tvKeys.add(button);
+    }
+
+    private void refreshTvPad() {
+        if (tvPad == null) return;
+        tvPad.setVisibility(tv.paired != null && Pairing.prefs(this).getBoolean("tv-navigation-pad", true) ? View.VISIBLE : View.GONE);
+        tvPadNote.setVisibility(tv.navigation ? View.GONE : View.VISIBLE);
+        for (ImageView key : tvKeys)
+            if (key.isEnabled() != tv.navigation) enabled(key, tv.navigation);
     }
 
     private void addVolume(FrameLayout playbackRow) {
         adjustingVolume = false;
-        volumeButton = icon(R.drawable.ic_volume, tr("Громкость компьютера"), text, 11);
+        String volumeLabel = tr(tvMode ? "Громкость телевизора" : "Громкость компьютера");
+        volumeButton = icon(R.drawable.ic_volume, volumeLabel, text, 11);
         volumeButton.setBackground(ripple(raised, 15));
         volumeButton.setVisibility(View.GONE);
         playbackRow.addView(volumeButton, new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.END | Gravity.CENTER_VERTICAL));
@@ -749,7 +818,7 @@ public final class MainActivity extends Activity {
         volumeRow.setPadding(dp(9), 0, dp(12), 0);
         volume = new SeekBar(this);
         volume.setMax(100);
-        volume.setContentDescription(tr("Громкость компьютера"));
+        volume.setContentDescription(volumeLabel);
         volume.setProgressTintList(ColorStateList.valueOf(accent));
         volume.setProgressBackgroundTintList(ColorStateList.valueOf(Appearance.mix(raised, dim, .35)));
         volume.setThumbTintList(ColorStateList.valueOf(accent));
@@ -835,8 +904,8 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private static Playback.Source selectedSource() {
-        Playback state = PhoneLink.playback;
+    private Playback.Source selectedSource() {
+        Playback state = targetPlayback();
         return state == null ? null : state.selected;
     }
 
@@ -844,7 +913,9 @@ public final class MainActivity extends Activity {
         Playback.Source current = selectedSource();
         if (current == null || !source.id.equals(current.id) || !source.title.equals(current.title) ||
             current.timeline == null || !current.timeline.canSeek) return;
-        PhoneLink.start(this, "seek", current.id + ":" + current.timeline.target(progress / 1000.0));
+        long position = current.timeline.target(progress / 1000.0);
+        if (tvMode) tv.send("seek", current, position);
+        else PhoneLink.start(this, "seek", current.id + ":" + position);
     }
 
     private void refreshTimeline(Playback.Source active) {
@@ -867,7 +938,7 @@ public final class MainActivity extends Activity {
 
     private void updatePlayback(Playback value) {
         last = value;
-        if (!paired) {
+        if (!paired && !tvMode && page == Page.PLAYER) {
             status.setText(pairing ? tr("Подключаемся…") : tr("ПК не подключён"));
             return;
         }
@@ -878,7 +949,8 @@ public final class MainActivity extends Activity {
         refreshTimeline(active);
         refreshVolume(value);
         boolean playing = active != null && active.playing;
-        title.setText(value == null ? tr("ПК недоступен") : active == null ? tr("Нет воспроизведения") : active.displayTitle());
+        title.setText(value == null ? tr(tvMode ? (tv.paired == null ? "Подключи телевизор" : "Телевизор недоступен") :
+            "ПК недоступен") : active == null ? tr("Нет воспроизведения") : active.displayTitle());
         sourceLabel.setText(active == null ? "" :
             active.artist.isEmpty() ? active.app + "  ›" : active.artist + "  ·  " + active.app + "  ›");
         sourceLabel.setEnabled(active != null);
@@ -900,10 +972,11 @@ public final class MainActivity extends Activity {
     }
 
     private void connectionStatus(Playback value) {
-        Pairing connection = PhoneLink.connection(this);
+        Pairing connection = tvMode ? tv.paired : PhoneLink.connection(this);
         String computer = connection == null ? "" : connection.name;
-        String state = pairing ? tr("Подключаемся…") : value != null ? tr("Подключён") :
-            PhoneLink.accessDenied ? tr("Нужна новая привязка") : tr("Нет связи");
+        String state = tvMode && "permission".equals(tv.status) ? tr("Нет доступа к плеерам") :
+            !tvMode && pairing ? tr("Подключаемся…") : value != null ? tr("Подключён") :
+            (!tvMode ? PhoneLink.accessDenied : "unauthorized".equals(tv.status)) ? tr("Нужна новая привязка") : tr("Нет связи");
         String caption = state + (computer.isEmpty() ? "" : " · " + computer);
         if (!caption.contentEquals(status.getText())) status.setText(caption);
     }
@@ -919,16 +992,20 @@ public final class MainActivity extends Activity {
     }
 
     private void action(String command) {
-        Playback now = PhoneLink.playback;
-        if (now == null) PhoneLink.start(this, "refresh", null);
+        Playback now = targetPlayback();
+        if (now == null) {
+            if (tvMode) { if (tv.paired == null) tvSettings(); else tv.refresh(); }
+            else PhoneLink.start(this, "refresh", null);
+        }
         else if (now.selected != null) {
             if ("toggle".equals(command)) {
                 showPlayIcon(toggle.getDisplayedChild() == 1 ? 0 : 1);
                 ui.postDelayed(() -> {
-                    if (paired && PhoneLink.playback == now) updatePlayback(now);
+                    if (page == Page.PLAYER && targetPlayback() == now) updatePlayback(now);
                 }, 550);
             }
-            PhoneLink.start(this, command, now.selected.id);
+            if (tvMode) tv.send(command, now.selected, 0);
+            else PhoneLink.start(this, command, now.selected.id);
         }
     }
 
@@ -937,22 +1014,22 @@ public final class MainActivity extends Activity {
     }
 
     private void renderSources(Playback state) {
-        String selected = Pairing.prefs(this).getString("source", "");
+        String selected = tvMode ? tv.selected : Pairing.prefs(this).getString("source", "");
         StringBuilder signature = new StringBuilder(selected).append(state == null ? "|offline" : "|online");
         if (state != null) for (Playback.Source source : state.sources)
             signature.append('|').append(source.id).append('|').append(source.displayTitle());
         if (signature.toString().equals(sourceSignature)) return;
         sourceSignature = signature.toString();
         sourcesGrid.removeAllViews();
-        LinearLayout automatic = settingsGroup(sourcesGrid);
-        menuRow(automatic, R.drawable.ic_auto, tr("Автовыбор"), tr("Текущая сессия Windows"), selected.isEmpty(),
-            () -> selectSource(""));
-        gap(sourcesGrid, 15);
         if (state == null || state.sources.isEmpty()) {
             LinearLayout empty = card(sourcesGrid);
             empty.addView(label(tr("Нет активных источников"), 16, dim, false));
             return;
         }
+        LinearLayout automatic = settingsGroup(sourcesGrid);
+        menuRow(automatic, R.drawable.ic_auto, tr("Автовыбор"), tr(tvMode ? "Текущая сессия телевизора" : "Текущая сессия Windows"),
+            selected.isEmpty() || state.sources.stream().noneMatch(source -> source.id.equals(selected)), () -> selectSource(""));
+        gap(sourcesGrid, 15);
         for (int i = 0; i < state.sources.size(); i += 2) {
             LinearLayout line = row();
             sourcesGrid.addView(line, new LinearLayout.LayoutParams(-1, -2));
@@ -989,7 +1066,8 @@ public final class MainActivity extends Activity {
     }
 
     private void selectSource(String id) {
-        if (PhoneLink.playback != null) PhoneLink.start(this, "source", id);
+        if (tvMode) tv.select(id);
+        else if (PhoneLink.playback != null) PhoneLink.start(this, "source", id);
         closePanel();
     }
 
@@ -1015,28 +1093,21 @@ public final class MainActivity extends Activity {
     }
 
     private void settings() {
-        if (paired) {
-            closePanel();
-            navigate(Page.SETTINGS);
-            return;
-        }
-        panel(tr("Настройки"), this::settingsContent);
-        settingsSheet = SettingsSheet.MAIN;
+        closePanel();
+        navigate(Page.SETTINGS);
     }
 
     private void settingsContent(LinearLayout list) {
         section(list, tr("Интерфейс"));
         menuRow(settingsGroup(list), R.drawable.ic_appearance, tr("Оформление"), tr("Тема, цвет, плеер и виджеты"),
             false, this::appearanceSettings);
-        if (paired) {
-            section(list, tr("Подключение"));
-            LinearLayout connection = settingsGroup(list);
-            menuRow(connection, R.drawable.ic_signal, tr("Проверить связь"), tr("Время ответа ПК"), false,
-                () -> PhoneLink.start(this, "check-link", null));
-            menuRow(connection, R.drawable.ic_qr, tr("Перепривязать по QR"), "", false, this::requestScan);
-            menuRow(connection, R.drawable.ic_keyboard, tr("Ввести код привязки"), "", false, this::pasteCode);
-            menuRow(connection, R.drawable.ic_unlink, tr("Отвязать компьютер"), "", false, this::forget);
-        }
+        section(list, tr("Подключение"));
+        LinearLayout connection = settingsGroup(list);
+        Pairing computer = PhoneLink.connection(this);
+        menuRow(connection, R.drawable.ic_monitor, tr("Компьютер"), computer == null ? "" : computer.name,
+            false, this::computerSettings);
+        menuRow(connection, R.drawable.ic_tv, tr("Телевизор"), tv.paired == null ? "" : tv.paired.name,
+            false, this::tvSettings);
         sectionPhoneControl(list);
         section(list, tr("Приложение"));
         LinearLayout app = settingsGroup(list);
@@ -1044,6 +1115,70 @@ public final class MainActivity extends Activity {
             false, this::languageSettings);
         menuRow(app, R.drawable.ic_retry, tr("Обновления"), tr("Версия ") + ReleaseUpdates.currentVersion(this), false, this::updatesPanel);
         menuRow(app, R.drawable.ic_source, tr("Диагностика"), tr("Просмотреть или сохранить журнал"), false, this::diagnosticsPanel);
+    }
+
+    private void computerSettings() {
+        panel(tr("Компьютер"), list -> {
+            LinearLayout connection = settingsGroup(list);
+            if (paired) {
+                menuRow(connection, R.drawable.ic_signal, tr("Проверить связь"), tr("Время ответа ПК"), false,
+                    () -> PhoneLink.start(this, "check-link", null));
+            }
+            menuRow(connection, R.drawable.ic_qr, tr(paired ? "Перепривязать по QR" : "Сканировать QR-код"), "", false, this::requestScan);
+            menuRow(connection, R.drawable.ic_keyboard, tr("Ввести код привязки"), "", false, this::pasteCode);
+            if (paired) menuRow(connection, R.drawable.ic_unlink, tr("Отвязать компьютер"), "", false, this::forget);
+        }, this::closePanel);
+    }
+
+    private void tvSettings() {
+        panel(tr("Телевизор"), list -> {
+            if (tv.paired == null) {
+                list.addView(label(tr("Открой CueRelay на телевизоре и покажи QR-код."), 15, dim, false));
+                gap(list, 10);
+            } else {
+                list.addView(deviceCard(tv.paired.name, R.drawable.ic_tv));
+                gap(list, 10);
+            }
+            LinearLayout connection = settingsGroup(list);
+            menuRow(connection, R.drawable.ic_qr, tr(tv.paired == null ? "Сканировать QR-код" : "Перепривязать по QR"),
+                "", false, this::requestTvScan);
+            if (tv.paired != null) {
+                menuRow(connection, R.drawable.ic_retry, tr("Проверить связь"), "", false, () -> {
+                    tv.refresh();
+                    tvMode = true;
+                    tv.polling(true);
+                    closePanel();
+                    if (page == Page.PLAYER) render(null);
+                    else navigate(Page.PLAYER);
+                });
+                menuRow(connection, R.drawable.ic_unlink, tr("Отвязать телевизор"), "", false, this::forgetTv);
+            }
+            section(list, tr("Плеер"));
+            settingSwitch(settingsGroup(list), R.drawable.ic_tv, tr("Показывать кнопки навигации"), "tv-navigation-pad",
+                Pairing.prefs(this).getBoolean("tv-navigation-pad", true));
+        }, this::closePanel);
+    }
+
+    private void requestTvScan() {
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) openTvScanner();
+        else requestPermissions(new String[]{Manifest.permission.CAMERA}, CAMERA_TV);
+    }
+
+    private void openTvScanner() {
+        startActivityForResult(new Intent(this, ScanActivity.class).putExtra("tv", true), SCAN_TV);
+    }
+
+    private void forgetTv() {
+        panel(tr("Отвязать телевизор?"), list -> {
+            list.addView(label(tr("Чтобы подключиться снова, понадобится новая привязка."), 15, dim, false));
+            gap(list, 12);
+            list.addView(button(tr("Отвязать"), true, () -> tv.forget(ok -> {
+                if (!ok) { showError(tr("Телевизор недоступен")); return; }
+                closePanel();
+                render(null);
+            })), full(48));
+            list.addView(button(tr("Отмена"), false, this::tvSettings), full(46));
+        }, this::tvSettings);
     }
 
     private void languageSettings() {
@@ -1064,10 +1199,6 @@ public final class MainActivity extends Activity {
         PlayerWidget.updateAll(this);
         if (paired) PhoneLink.start(this, "surface", null);
         languageSettings();
-    }
-
-    private void tvRemote() {
-        startActivity(new Intent(this, TvRemoteActivity.class));
     }
 
     private void paintUpdateNotice() {
@@ -1312,6 +1443,7 @@ public final class MainActivity extends Activity {
     }
 
     private void sectionPhoneControl(LinearLayout list) {
+        if (!paired) return;
         section(list, tr("Управление телефоном"));
         LinearLayout group = settingsGroup(list);
         if (paired) {
@@ -1326,8 +1458,6 @@ public final class MainActivity extends Activity {
             settingSwitch(group, R.drawable.ic_volume, tr("Кнопки громкости управляют ПК"), VOLUME_KEYS,
                 Pairing.prefs(this).getBoolean(VOLUME_KEYS, false));
         }
-        menuRow(group, R.drawable.ic_tv, tr("Пульт Android TV"), tr("Привязка и управление по локальной сети"),
-            false, this::tvRemote);
     }
 
     private void phoneApps() {
@@ -1392,7 +1522,8 @@ public final class MainActivity extends Activity {
         control.setOnCheckedChangeListener((view, checked) -> {
             Pairing.prefs(this).edit().putBoolean(key, checked).apply();
             if (checked && Appearance.SYNC.equals(key)) Appearance.takeRemote(this, PhoneLink.playback);
-            updatePlayback(PhoneLink.playback);
+            updatePlayback(targetPlayback());
+            refreshTvPad();
             PlayerWidget.updateAll(this);
             if (paired) PhoneLink.start(this,
                 PhoneMedia.ENABLED.equals(key) || PhoneMedia.COVERS.equals(key) ? "phone-settings" : "surface", null);
@@ -1759,6 +1890,10 @@ public final class MainActivity extends Activity {
 
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] grants) {
         super.onRequestPermissionsResult(code, permissions, grants);
+        if (code == CAMERA_TV && grants.length > 0) {
+            if (grants[0] == PackageManager.PERMISSION_GRANTED) openTvScanner();
+            else showError(tr("Разреши CueRelay доступ к камере."));
+        }
         if (code == CAMERA && grants.length > 0) {
             if (grants[0] == PackageManager.PERMISSION_GRANTED) openScanner();
             else showError(tr("Разреши доступ к камере в настройках или вставь код вручную."));
@@ -1767,6 +1902,16 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == SCAN_TV && result == RESULT_OK && data != null) {
+            closePanel();
+            tv.pair(data.getStringExtra("code"), success -> {
+                if (!success) { showError(tr("Не удалось подключить телевизор.")); return; }
+                tvMode = true;
+                page = Page.PLAYER;
+                tv.polling(true);
+                render(null);
+            });
+        }
         if (request == SCAN && result == RESULT_OK && data != null) pair(data.getStringExtra("code"));
         if (request == EXPORT_LOG) {
             String snapshot = logExport;
@@ -2006,7 +2151,7 @@ public final class MainActivity extends Activity {
         activePair = null;
         if (pairDialog != null) { pairDialog.dismiss(); pairDialog = null; }
         pairing = false;
-        updatePlayback(PhoneLink.playback);
+        updatePlayback(targetPlayback());
         if (flow.saved) PhoneLink.start(this, "refresh", null);
     }
 
