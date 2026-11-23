@@ -226,7 +226,18 @@ Windows не смогла сохранить привязку. Проверь д
 Освобождает окно при закрытии. Связь продолжает работать.|Unloads the window when closed and keeps the connection running.
 Телевизор|TV
 Пульт Android TV|Android TV remote
-Через приложение Google TV · без ПК|Via the Google TV app · no PC needed
-Подключи телефон и телевизор к одной сети. В Google TV открой пульт, выбери телевизор и введи код с его экрана.|Connect your phone and TV to the same network. Open the remote in Google TV, select your TV and enter the code shown on its screen.
-Открыть Google TV|Open Google TV
-Открой Google TV на телефоне, чтобы подключить пульт.|Open Google TV on your phone to pair the remote.
+Управление телевизором включено|TV control is on
+Показать QR-код|Show QR code
+Отключить пульт|Disable remote
+Разреши CueRelay доступ к уведомлениям на телевизоре.|Allow notification access for CueRelay on the TV.
+Не удалось открыть локальное подключение.|Could not start the local connection.
+Отсканируй QR-код в пульте CueRelay на телефоне.|Scan the QR code in the CueRelay remote on your phone.
+Пульт готов. Можно вернуться к видео или музыке.|The remote is ready. You can return to your video or music.
+Покажи QR-код, чтобы подключить телефон.|Show the QR code to connect your phone.
+Подключи телевизор|Connect your TV
+Отвязать телевизор|Unpair TV
+Не удалось подключить телевизор.|Could not connect to the TV.
+Телевизор недоступен|TV unavailable
+Переключиться на телевизор|Switch to TV
+Привязка и управление по локальной сети|Pair and control over your local network
+Открой CueRelay на телевизоре и покажи QR-код.|Open CueRelay on the TV and show its QR code.

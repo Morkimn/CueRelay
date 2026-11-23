@@ -1002,10 +1002,6 @@ internal sealed class Dashboard : W.Window
         appearance.Children.Add(SettingsSwitch("Упростить анимации", "ic_appearance", identity.ReduceMotion, identity.SetReduceMotion,
             UiText.Text("Убирает переходы и эффекты движения.")));
         content.Children.Add(SettingsGroup(appearance));
-        Section(content, UiText.Text("Подключение"));
-        content.Children.Add(SettingsGroup(SettingsSwitch("Синхронизация темы", "ic_auto", identity.SyncAppearance,
-            enabled => { identity.SetSyncAppearance(enabled); media.RefreshAppearance(); },
-            UiText.Text("Применяет тему и акцент на ПК и телефоне."))));
         Section(content, UiText.Text("Управление"));
         content.Children.Add(SettingsGroup(SettingsRow(UiText.Text("Устройство при запуске"),
             identity.StartWithPhone ? UiText.Text("Телефон") : UiText.Text("ПК"), Computer, "ic_right", () =>
@@ -1291,6 +1287,9 @@ internal sealed class Dashboard : W.Window
             custom, true, () => OpenPanel(Panel.Color)));
         content.Children.Add(new C.Border { Background = palette.GroupInset, CornerRadius = new W.CornerRadius(24),
             Padding = new W.Thickness(7, 11, 7, 11), Child = colors });
+        content.Children.Add(SettingsGroup(SettingsSwitch("Синхронизация темы", "ic_auto", identity.SyncAppearance,
+            enabled => { identity.SetSyncAppearance(enabled); media.RefreshAppearance(); },
+            UiText.Text("Применяет тему и акцент на ПК и телефоне."))));
         Section(content, UiText.Text("Плеер"));
         content.Children.Add(SettingsGroup(SettingsSwitch("Показывать обложки", "ic_image", identity.ShowArtwork, enabled =>
         {
@@ -1571,19 +1570,29 @@ internal sealed class Dashboard : W.Window
 
     private void ManageDevice(C.StackPanel content, bool focusUnpair)
     {
-        content.Children.Add(Text(DeviceTitle(), 17, palette.Text, true));
-        content.Children.Add(Text(UiText.Text("Доступ к воспроизведению по локальной сети."), 14, palette.Muted));
-        Section(content, UiText.Text("Доступ"));
-        content.Children.Add(Row(UiText.Text("Плеер телефона"), UiText.Text("Открыть управление Android"), false, () => { ClosePanel(); SelectTarget(true); }));
-        content.Children.Add(Row(UiText.Text("Заменить телефон"), UiText.Text("После новой привязки прежний доступ будет отозван"), false, StartPairing));
-        var unpair = Row(UiText.Text("Отвязать телефон"), "", false, () =>
+        var header = SettingsLabel(DeviceTitle(), UiText.Text("Привязан по сети"), Phone);
+        header.Margin = new W.Thickness(9, 8, 8, 8);
+        content.Children.Add(SettingsGroup(header));
+        Section(content, UiText.Text("Управление"));
+        content.Children.Add(SettingsGroup(SettingsRow(UiText.Text("Плеер телефона"), UiText.Text("Открыть управление Android"),
+            "ic_note", "ic_right", () => { ClosePanel(); SelectTarget(true); })));
+        Section(content, UiText.Text("Подключение"));
+        var connection = new C.StackPanel();
+        var replace = SettingsRow(UiText.Text("Заменить телефон"), UiText.Text("После новой привязки прежний доступ будет отозван"),
+            "ic_qr", "ic_right", StartPairing);
+        replace.Tag = new W.CornerRadius(21, 21, 8, 8);
+        connection.Children.Add(replace);
+        var unpair = SettingsRow(UiText.Text("Отвязать телефон"), "", "ic_unlink", "ic_right", () =>
         {
             if (identity.PairKey is not { } pairKey) return;
             unpairTarget = (pairKey, DeviceTitle());
             OpenPanel(Panel.Unpair);
         });
+        unpair.Tag = new W.CornerRadius(8, 8, 21, 21);
+        unpair.Margin = new W.Thickness(0, 2, 0, 0);
         if (focusUnpair) unpair.Loaded += (_, _) => { if (panel == Panel.Device) unpair.Focus(); };
-        content.Children.Add(unpair);
+        connection.Children.Add(unpair);
+        content.Children.Add(SettingsGroup(connection));
     }
 
     private C.Border UnpairConfirmation(string pairKey, string deviceTitle, bool animate)

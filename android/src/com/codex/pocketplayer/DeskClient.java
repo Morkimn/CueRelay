@@ -24,11 +24,22 @@ final class DeskClient {
 
     DeskClient(Pairing pairing) throws Exception {
         this.pairing = pairing;
+        trust = pinnedTrust(pairing.fingerprint);
+        sockets = sockets(trust);
+    }
+
+    static SSLSocketFactory sockets(X509TrustManager trust) throws Exception {
+        SSLContext ssl = SSLContext.getInstance("TLS");
+        ssl.init(null, new TrustManager[] { trust }, null);
+        return ssl.getSocketFactory();
+    }
+
+    static X509TrustManager pinnedTrust(String pin) {
         byte[] expected = new byte[32];
         for (int i = 0; i < expected.length; i++) {
-            expected[i] = (byte) Integer.parseInt(pairing.fingerprint.substring(i * 2, i * 2 + 2), 16);
+            expected[i] = (byte) Integer.parseInt(pin.substring(i * 2, i * 2 + 2), 16);
         }
-        trust = new X509TrustManager() {
+        return new X509TrustManager() {
             @Override public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
             @Override public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
                 throw new CertificateException("Client certificate");
@@ -43,9 +54,6 @@ final class DeskClient {
                 } catch (Exception exception) { throw new CertificateException(exception); }
             }
         };
-        SSLContext ssl = SSLContext.getInstance("TLS");
-        ssl.init(null, new TrustManager[] { trust }, null);
-        sockets = ssl.getSocketFactory();
     }
 
     JSONObject json(String address, String path, JSONObject body, boolean authenticated, int timeout) throws Exception {

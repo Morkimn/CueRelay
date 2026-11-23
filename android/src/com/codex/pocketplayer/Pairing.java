@@ -77,7 +77,11 @@ final class Pairing {
     }
 
     static Pairing read(Context context) {
-        String saved = prefs(context).getString("connection", null);
+        return read(context, "connection");
+    }
+
+    static Pairing read(Context context, String storage) {
+        String saved = prefs(context).getString(storage, null);
         if (saved == null) return null;
         try {
             JSONObject data = new JSONObject(saved);
@@ -94,6 +98,13 @@ final class Pairing {
     }
 
     void save(Context context, String theme, String accent, boolean differentComputer, boolean remoteSync) throws Exception {
+        SharedPreferences.Editor edit = stored(context, "connection");
+        if (remoteSync && Appearance.sync(context)) edit.putString("theme", theme).putString("accent", accent);
+        if (differentComputer) edit.putBoolean(PhoneMedia.ENABLED, false);
+        if (!edit.commit()) throw new java.io.IOException("Could not save credentials");
+    }
+
+    SharedPreferences.Editor stored(Context context, String storage) throws Exception {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, key(true));
         JSONObject data = new JSONObject();
@@ -103,10 +114,7 @@ final class Pairing {
         data.put("name", name);
         data.put("iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP));
         data.put("token", Base64.encodeToString(cipher.doFinal(secret.getBytes(StandardCharsets.UTF_8)), Base64.NO_WRAP));
-        SharedPreferences.Editor edit = prefs(context).edit().putString("connection", data.toString());
-        if (remoteSync && Appearance.sync(context)) edit.putString("theme", theme).putString("accent", accent);
-        if (differentComputer) edit.putBoolean(PhoneMedia.ENABLED, false);
-        if (!edit.commit()) throw new java.io.IOException("Could not save credentials");
+        return prefs(context).edit().putString(storage, data.toString());
     }
 
     static void clear(Context context) {

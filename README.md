@@ -28,11 +28,9 @@ Use **Настройки → Диагностика** to view or save a JSON Lin
 
 ## TVs
 
-On Android, open **Settings → TV → Android TV remote** for a shortcut to Google's remote. Google TV pairs directly with the television using the code displayed on its screen, so the PC can be off. [Google TV remote setup](https://support.google.com/googletv/answer/11136134)
+Install the same CueRelay Android build on the phone and Android TV or Google TV. On the TV, open CueRelay, grant notification access and choose **Show QR code**. On the phone, use the TV switch above the widget button in the Player, then choose **Scan QR code**. The phone controls the TV directly on the local network. The PC may be off and does not need to be paired.
 
-The common design for both controllers is to treat the TV as a third, explicitly paired playback device. For Google Cast, an Android sender and a sender in Chrome can control the same compatible receiver when the session is available to them. Cast Connect can launch a compatible installed Android TV receiver on demand. This is limited to the media and commands the receiver supports. For media already opened in another TV app, use a manufacturer-supported control protocol where available. Which integration is feasible depends on the TV model and OS. [Google Cast overview](https://developers.google.com/cast/docs/overview) · [Android TV receivers](https://developers.google.com/cast/docs/android_tv_receiver/)
-
-CueRelay still controls Windows and Android directly. You can cast through a compatible player and control that player from CueRelay if it exposes the cast playback as a normal media session. Native control inside CueRelay for media already playing in arbitrary Android TV or Google TV apps would require a TV companion with one-time pairing and access to the TV's media sessions. The phone and PC could each connect directly on the local network. Background operation depends on notification access and the firmware's startup and background policies.
+The TV shares the playback and seek controls advertised by active Android media sessions, plus its Android media volume when adjustable. The connection uses TLS with a pinned TV certificate. The QR carries a short-lived single-use invitation. The TV can revoke the paired phone with **Disable remote**. The companion can run in the background after setup. An IP address change can require scanning a new code. ADB is only needed for development or sideloading when the TV has no other means to install the APK. [Android media sessions](https://developer.android.com/reference/android/media/session/MediaSessionManager)
 
 ## Local development and releases
 

@@ -154,7 +154,8 @@ public final class ScanActivity extends Activity implements SurfaceHolder.Callba
             crop.left, crop.top, crop.width(), crop.height(), false);
         try {
             String code = reader.decode(new BinaryBitmap(new HybridBinarizer(image))).getText();
-            Pairing.fromQr(code);
+            if (getIntent().getBooleanExtra("tv", false)) TvLink.invitation(code);
+            else Pairing.fromQr(code);
             finished = true;
             setResult(RESULT_OK, new Intent().putExtra("code", code));
             finish();

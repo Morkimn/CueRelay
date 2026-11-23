@@ -98,6 +98,7 @@ public final class PhoneMedia extends NotificationListenerService {
         private final Context context;
         private final Handler callbacks;
         private final Runnable changed;
+        private final boolean tv;
         private final MediaSessionManager manager;
         private final MediaSessionManager.OnActiveSessionsChangedListener activeChanged;
         private final Map<MediaSession.Token, String> ids = new HashMap<>();
@@ -108,9 +109,14 @@ public final class PhoneMedia extends NotificationListenerService {
         private boolean monitoring, closed;
 
         Exchange(Context context, Handler callbacks, Runnable changed) {
+            this(context, callbacks, changed, false);
+        }
+
+        Exchange(Context context, Handler callbacks, Runnable changed, boolean tv) {
             this.context = context;
             this.callbacks = callbacks;
             this.changed = changed;
+            this.tv = tv;
             manager = context.getSystemService(MediaSessionManager.class);
             activeChanged = ignored -> changed.run();
         }
@@ -121,7 +127,7 @@ public final class PhoneMedia extends NotificationListenerService {
             JSONObject result = new JSONObject().put("device", deviceName(context)).put("status", "off")
                 .put("sources", sources).put("pushOnly", true);
             if (closed) return result;
-            if (!enabled(context)) {
+            if (!tv && !enabled(context)) {
                 ids.clear();
                 covers.clear();
                 stopObserving();
@@ -138,7 +144,7 @@ public final class PhoneMedia extends NotificationListenerService {
                 } catch (SecurityException ignored) { }
             }
             Set<String> blocked = Pairing.prefs(context).getStringSet(BLOCKED, Collections.emptySet());
-            boolean includeCovers = Pairing.prefs(context).getBoolean(COVERS, true);
+            boolean includeCovers = !tv && Pairing.prefs(context).getBoolean(COVERS, true);
             if (!includeCovers) covers.clear();
             List<MediaSession.Token> kept = new ArrayList<>();
             for (MediaController item : active) {
@@ -223,7 +229,7 @@ public final class PhoneMedia extends NotificationListenerService {
 
         synchronized boolean apply(JSONObject answer) {
             JSONArray commands = answer.optJSONArray("commands");
-            if (closed || !enabled(context) || commands == null || commands.length() == 0 || !hasAccess(context)) return false;
+            if (closed || (!tv && !enabled(context)) || commands == null || commands.length() == 0 || !hasAccess(context)) return false;
             Set<String> blocked = Pairing.prefs(context).getStringSet(BLOCKED, Collections.emptySet());
             for (int i = 0; i < Math.min(commands.length(), 8); i++) {
                 JSONObject command = commands.optJSONObject(i);

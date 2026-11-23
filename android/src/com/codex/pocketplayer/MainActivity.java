@@ -92,7 +92,7 @@ public final class MainActivity extends Activity {
     private long volumeQuietUntil;
     private float swipeX, swipeY;
     private boolean pageSwipe, volumeKeyHeld;
-    private View dockSurface, widgetFab;
+    private View dockSurface, widgetFab, tvFab;
     private DockTouch pageDock;
     private PageDrag pageDrag;
     private LinearLayout timelinePanel;
@@ -266,6 +266,7 @@ public final class MainActivity extends Activity {
         root.addView(outgoing, 0, new FrameLayout.LayoutParams(-1, -1));
         outgoing.scrollTo(0, drag.scrollY);
         if (widgetFab != null) widgetFab.setVisibility(View.INVISIBLE);
+        if (tvFab != null) tvFab.setVisibility(View.INVISIBLE);
     }
 
     private void positionDrag(PageDrag drag, float x) {
@@ -313,6 +314,7 @@ public final class MainActivity extends Activity {
         }
         pageScroll.setTranslationX(0);
         if (widgetFab != null) widgetFab.setVisibility(View.VISIBLE);
+        if (tvFab != null) tvFab.setVisibility(View.VISIBLE);
         if (pageDock != null) pageDock.place(pageDock.tabs.getChildAt(page.ordinal()).getLeft());
         updatePlayback(PhoneLink.playback);
     }
@@ -352,6 +354,7 @@ public final class MainActivity extends Activity {
 
     private void render(Point origin) {
         widgetFab = null;
+        tvFab = null;
         pageDock = null;
         dismissVolume();
         ui.removeCallbacks(sendVolume);
@@ -404,8 +407,8 @@ public final class MainActivity extends Activity {
         scroll.setFillViewport(true);
         content = column();
         int dockSpace = DOCK_HEIGHT + DOCK_BOTTOM;
-        int bottomSpace = !paired ? 24 : page == Page.PLAYER
-            ? dockSpace + WIDGET_BUTTON_GAP + WIDGET_BUTTON_SIZE + 14 : dockSpace + 19;
+        int bottomSpace = !paired ? 74 : page == Page.PLAYER
+            ? dockSpace + WIDGET_BUTTON_GAP + WIDGET_BUTTON_SIZE + 64 : dockSpace + 19;
         content.setPadding(dp(18), dp(18), dp(18), dp(bottomSpace));
         scroll.addView(content);
         root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
@@ -474,6 +477,18 @@ public final class MainActivity extends Activity {
             content.addView(sourcesGrid, new LinearLayout.LayoutParams(-1, -2));
         } else {
             settingsContent(content);
+        }
+        if (playerPage) {
+            ImageView tv = icon(R.drawable.ic_tv, tr("Переключиться на телевизор"), text, 11);
+            tv.setBackground(ripple(raised, 17));
+            tv.setElevation(dp(4));
+            tv.setOnClickListener(v -> tvRemote());
+            springPress(tv);
+            FrameLayout.LayoutParams anchor = new FrameLayout.LayoutParams(dp(46), dp(46), Gravity.END | Gravity.BOTTOM);
+            anchor.setMarginEnd(dp(22));
+            anchor.bottomMargin = dp(paired ? dockSpace + WIDGET_BUTTON_GAP + WIDGET_BUTTON_SIZE + 9 : 18);
+            root.addView(tv, anchor);
+            tvFab = tv;
         }
         if (paired) addDock(root, pageDrag == null ? from : null);
         if (activitySurface == null) {
@@ -1013,23 +1028,16 @@ public final class MainActivity extends Activity {
         section(list, tr("Интерфейс"));
         menuRow(settingsGroup(list), R.drawable.ic_appearance, tr("Оформление"), tr("Тема, цвет, плеер и виджеты"),
             false, this::appearanceSettings);
-        section(list, tr("Подключение"));
-        LinearLayout connection = settingsGroup(list);
-        settingSwitch(connection, R.drawable.ic_auto, tr("Синхронизация темы"), Appearance.SYNC, Appearance.sync(this));
         if (paired) {
+            section(list, tr("Подключение"));
+            LinearLayout connection = settingsGroup(list);
             menuRow(connection, R.drawable.ic_signal, tr("Проверить связь"), tr("Время ответа ПК"), false,
                 () -> PhoneLink.start(this, "check-link", null));
             menuRow(connection, R.drawable.ic_qr, tr("Перепривязать по QR"), "", false, this::requestScan);
             menuRow(connection, R.drawable.ic_keyboard, tr("Ввести код привязки"), "", false, this::pasteCode);
             menuRow(connection, R.drawable.ic_unlink, tr("Отвязать компьютер"), "", false, this::forget);
-            sectionPhoneControl(list);
-            section(list, tr("Управление"));
-            settingSwitch(settingsGroup(list), R.drawable.ic_volume, tr("Кнопки громкости управляют ПК"), VOLUME_KEYS,
-                Pairing.prefs(this).getBoolean(VOLUME_KEYS, false));
         }
-        section(list, tr("Телевизор"));
-        menuRow(settingsGroup(list), R.drawable.ic_monitor, tr("Пульт Android TV"), tr("Через приложение Google TV · без ПК"),
-            false, this::tvRemote);
+        sectionPhoneControl(list);
         section(list, tr("Приложение"));
         LinearLayout app = settingsGroup(list);
         menuRow(app, R.drawable.ic_language, tr("Язык"), "en".equals(UiText.language(this)) ? "English" : "Русский",
@@ -1059,21 +1067,7 @@ public final class MainActivity extends Activity {
     }
 
     private void tvRemote() {
-        panel(tr("Пульт Android TV"), list -> {
-            list.addView(label(tr("Подключи телефон и телевизор к одной сети. В Google TV открой пульт, выбери телевизор и введи код с его экрана."),
-                15, dim, false));
-            gap(list, 12);
-            list.addView(button(tr("Открыть Google TV"), true, () -> {
-                Intent launch = getPackageManager().getLaunchIntentForPackage("com.google.android.videos");
-                try {
-                    if (launch != null) startActivity(launch);
-                    else startActivity(new Intent(Intent.ACTION_VIEW,
-                        android.net.Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.videos")));
-                } catch (android.content.ActivityNotFoundException unavailable) {
-                    showError(tr("Открой Google TV на телефоне, чтобы подключить пульт."));
-                }
-            }), full(49));
-        }, this::settings);
+        startActivity(new Intent(this, TvRemoteActivity.class));
     }
 
     private void paintUpdateNotice() {
@@ -1242,6 +1236,7 @@ public final class MainActivity extends Activity {
         appearanceRow(theme, "dark", tr("Тёмная"), mode, R.drawable.ic_moon);
         section(list, tr("Акцентный цвет"));
         accentChoices(list);
+        settingSwitch(settingsGroup(list), R.drawable.ic_auto, tr("Синхронизация темы"), Appearance.SYNC, Appearance.sync(this));
         section(list, tr("Плеер и виджеты"));
         LinearLayout playback = settingsGroup(list);
         settingSwitch(playback, R.drawable.ic_image, tr("Показывать обложки"), "show-art", Appearance.showArtwork(this));
@@ -1319,14 +1314,20 @@ public final class MainActivity extends Activity {
     private void sectionPhoneControl(LinearLayout list) {
         section(list, tr("Управление телефоном"));
         LinearLayout group = settingsGroup(list);
-        boolean granted = PhoneMedia.hasAccess(this);
-        menuRow(group, R.drawable.ic_bell, tr("Доступ к уведомлениям"),
-            granted ? tr("Разрешён") : tr("Нужен для чтения медиасессий Android"), granted, () ->
-                startActivity(new Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)));
-        menuRow(group, R.drawable.ic_apps, tr("Видимые приложения"), tr("Выбрать, какие плееры видны на ПК"), false, this::phoneApps);
-        settingSwitch(group, R.drawable.ic_monitor, tr("Разрешить управление с ПК"), PhoneMedia.ENABLED, PhoneMedia.enabled(this));
-        settingSwitch(group, R.drawable.ic_image, tr("Передавать обложки на ПК"), PhoneMedia.COVERS,
-            Pairing.prefs(this).getBoolean(PhoneMedia.COVERS, true));
+        if (paired) {
+            boolean granted = PhoneMedia.hasAccess(this);
+            menuRow(group, R.drawable.ic_bell, tr("Доступ к уведомлениям"),
+                granted ? tr("Разрешён") : tr("Нужен для чтения медиасессий Android"), granted, () ->
+                    startActivity(new Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)));
+            menuRow(group, R.drawable.ic_apps, tr("Видимые приложения"), tr("Выбрать, какие плееры видны на ПК"), false, this::phoneApps);
+            settingSwitch(group, R.drawable.ic_monitor, tr("Разрешить управление с ПК"), PhoneMedia.ENABLED, PhoneMedia.enabled(this));
+            settingSwitch(group, R.drawable.ic_image, tr("Передавать обложки на ПК"), PhoneMedia.COVERS,
+                Pairing.prefs(this).getBoolean(PhoneMedia.COVERS, true));
+            settingSwitch(group, R.drawable.ic_volume, tr("Кнопки громкости управляют ПК"), VOLUME_KEYS,
+                Pairing.prefs(this).getBoolean(VOLUME_KEYS, false));
+        }
+        menuRow(group, R.drawable.ic_tv, tr("Пульт Android TV"), tr("Привязка и управление по локальной сети"),
+            false, this::tvRemote);
     }
 
     private void phoneApps() {
