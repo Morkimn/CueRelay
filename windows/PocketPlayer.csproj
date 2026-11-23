@@ -10,7 +10,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>CueRelay</AssemblyName>
-    <Version>0.7.6</Version>
+    <Version>0.8.0</Version>
     <Product>CueRelay</Product>
     <ApplicationIcon>CueRelay.ico</ApplicationIcon>
     <DefineConstants Condition="'$(CueRelayDevelopment)' == 'true'">$(DefineConstants);CUERELAY_DEV</DefineConstants>
