@@ -5,7 +5,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <UseWPF>true</UseWPF>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
-    <SelfContained>true</SelfContained>
+    <SelfContained Condition="'$(CueRelayDevelopment)' == 'true'">false</SelfContained>
+    <SelfContained Condition="'$(CueRelayDevelopment)' != 'true'">true</SelfContained>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>CueRelay</AssemblyName>

@@ -39,7 +39,7 @@ On Windows, install the .NET 10 SDK and Inno Setup 6.7. Use PowerShell from the 
 ```powershell
 New-Item -ItemType Directory -Force artifacts | Out-Null
 .\Build-Windows.ps1 -OutputDirectory .\artifacts
-.\artifacts\CueRelay-Dev-x64\CueRelay.exe
+dotnet .\artifacts\CueRelay-Dev-x64\CueRelay.dll
 .\Build-Windows.ps1 -Mode Prod -InnoCompiler 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' -OutputDirectory .\artifacts -Architecture x64
 .\Build-Windows.ps1 -Mode Prod -InnoCompiler 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' -OutputDirectory .\artifacts -Architecture arm64
 ```
@@ -54,3 +54,5 @@ Android needs a JDK, Android SDK Platform 35, Build Tools 35 and [ZXing Core 3.5
 Android updates require the same package-signing key as the installed app. The official release manifest is signed with a separate key stored outside the repository. A maintainer can run `Sign-Release.ps1` with that Windows DPAPI-protected key, then attach both manifest files and the three installers to a GitHub Release tagged `v<version>`. Keep the APK signing key and the release signing key out of Git.
 
 Dev is the default in both build scripts. Use a local development branch for iterations and publish from main when preparing a release. CueRelay Dev uses a separate Windows profile, an Android application ID with its own local signing key, and TCP port 43199. Pair Dev with Dev. The Dev apps run alongside Prod and skip GitHub update checks. A physical phone test requires Windows to allow the Dev executable on the trusted private network.
+
+Windows Dev uses the shared .NET 10 Desktop and ASP.NET Core runtimes from the .NET installation used to run it. If you have a portable SDK, use its `dotnet.exe` to launch `CueRelay.dll` as shown above. Reuse the same output directory for Dev builds. If it contains a previous self-contained build, use a clean directory for the first shared-runtime build. Windows installers in Prod carry the runtime for users who do not already have it.
