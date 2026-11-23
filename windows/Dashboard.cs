@@ -987,10 +987,17 @@ internal sealed class Dashboard : W.Window
         }
         if (!animate || !Motion) return;
         var motion = new M.TranslateTransform();
-        drawer.RenderTransform = motion;
+        var zoom = new M.ScaleTransform();
+        var transforms = new M.TransformGroup();
+        transforms.Children.Add(zoom);
+        transforms.Children.Add(motion);
+        drawer.RenderTransformOrigin = new W.Point(.75, .5);
+        drawer.RenderTransform = transforms;
         motion.BeginAnimation(pairingConfirmation ? M.TranslateTransform.YProperty : M.TranslateTransform.XProperty,
-            Bounce(60, 0, 375));
-        drawer.BeginAnimation(OpacityProperty, Ease(.24, 1, 220));
+            Bounce(32, 0, 390));
+        zoom.BeginAnimation(M.ScaleTransform.ScaleXProperty, Bounce(.97, 1, 390));
+        zoom.BeginAnimation(M.ScaleTransform.ScaleYProperty, Bounce(.97, 1, 390));
+        overlay.BeginAnimation(OpacityProperty, Ease(.42, 1, 230));
     }
 
     private void Settings(C.StackPanel content)

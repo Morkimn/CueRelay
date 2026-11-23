@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 
 public final class SharedFiles extends ContentProvider {
+    static final String TV_DIAGNOSTICS = "CueRelay-TV-Diagnostics.jsonl";
     static Uri uri(Context context, String name) {
         return new Uri.Builder().scheme("content").authority(context.getPackageName() + ".files").appendPath(name).build();
     }
@@ -20,6 +21,7 @@ public final class SharedFiles extends ContentProvider {
         if (uri.getPathSegments().size() != 1) throw new IllegalArgumentException("Invalid sharing path");
         String name = uri.getLastPathSegment();
         if (ReleaseUpdates.APK.equals(name)) return new File(getContext().getCacheDir(), "updates/" + name);
+        if (TV_DIAGNOSTICS.equals(name)) return new File(getContext().getCacheDir(), TV_DIAGNOSTICS);
         throw new IllegalArgumentException("Unknown shared file");
     }
 

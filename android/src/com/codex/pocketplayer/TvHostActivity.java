@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Point;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -29,21 +30,25 @@ import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
 public final class TvHostActivity extends Activity {
-    private enum Screen { CONNECTION, SETTINGS, REMOTES }
+    private enum Screen { CONNECTION, DEVICES, SETTINGS, APPEARANCE, LANGUAGE, CONTROLS, DIAGNOSTICS }
+    private static final int EXPORT_LOG = 71;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private Appearance.Palette colors;
     private Typeface regular, medium;
-    private ScrollView connectionPage, settingsPage, remotesPage;
+    private final Map<Screen, ScrollView> screens = new EnumMap<>(Screen.class);
+    private FrameLayout stage;
     private Button connectionTab, settingsTab, remotesTab, permission, pair, stop;
     private LinearLayout qrIntro, confirmation;
     private LinearLayout remoteList;
     private Screen currentScreen;
     private Map<String, String> visibleRemotes;
-    private String removingRemote, appearanceFocus;
+    private String removingRemote;
+    private String logExport;
     private TextView status, controllers, qrTitle, qrHint, navigationStatus;
     private ImageView code;
     private String shown;
@@ -58,14 +63,25 @@ public final class TvHostActivity extends Activity {
             finish();
             return;
         }
-        colors = Appearance.palette(this);
         regular = getResources().getFont(R.font.google_sans_regular);
         medium = getResources().getFont(R.font.google_sans_medium);
+        stage = new FrameLayout(this);
+        setContentView(stage);
+        if (bundle != null) logExport = bundle.getBoolean("exporting") ? readLog() : null;
+        buildUi(bundle == null ? Screen.CONNECTION : Screen.values()[bundle.getInt("screen")], null, null);
+    }
+
+    private void buildUi(Screen screen, Point origin, String focusTag) {
+        colors = Appearance.palette(this);
+        visibleRemotes = null;
+        removingRemote = null;
+        shown = null;
+        screens.clear();
+        currentScreen = null;
         boolean compact = getResources().getConfiguration().screenWidthDp < 800;
         LinearLayout shell = new LinearLayout(this);
         shell.setPadding(dp(compact ? 24 : 38), dp(27), dp(compact ? 24 : 38), dp(24));
         shell.setBackgroundColor(colors.background);
-        setContentView(shell);
 
         LinearLayout rail = column();
         LinearLayout.LayoutParams railSize = new LinearLayout.LayoutParams(dp(compact ? 142 : 178), -1);
@@ -79,30 +95,36 @@ public final class TvHostActivity extends Activity {
         TextView wordmark = label("CueRelay", compact ? 17 : 20, colors.text, true);
         wordmark.setPadding(dp(9), 0, 0, 0);
         brand.addView(wordmark);
-        rail.addView(brand);
-        spacer(rail, 27);
         connectionTab = button(rail, "Подключение", R.drawable.ic_tv, () -> showPage(Screen.CONNECTION));
+        remotesTab = button(rail, "Устройства", R.drawable.ic_phone, () -> showPage(Screen.DEVICES));
         settingsTab = button(rail, "Настройки", R.drawable.ic_settings, () -> showPage(Screen.SETTINGS));
-        remotesTab = button(rail, "Пульты", R.drawable.ic_phone, () -> showPage(Screen.REMOTES));
+        rail.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1));
+        rail.addView(brand);
 
         FrameLayout pages = new FrameLayout(this);
         shell.addView(pages, new LinearLayout.LayoutParams(0, -1, 1));
-        connectionPage = page(pages);
-        settingsPage = page(pages);
-        remotesPage = page(pages);
-        buildConnection((LinearLayout) connectionPage.getChildAt(0), compact);
-        buildSettings((LinearLayout) settingsPage.getChildAt(0));
-        buildRemotes((LinearLayout) remotesPage.getChildAt(0));
+        for (Screen destination : Screen.values()) screens.put(destination, page(pages));
+        buildConnection(body(Screen.CONNECTION), compact);
+        buildSettings(body(Screen.SETTINGS));
+        buildRemotes(body(Screen.DEVICES));
+        buildControls(body(Screen.CONTROLS));
+        buildAppearance(body(Screen.APPEARANCE));
+        buildLanguage(body(Screen.LANGUAGE));
         refresh();
-        showPage(bundle == null ? Screen.CONNECTION : Screen.values()[bundle.getInt("screen")]);
-        if (bundle != null && currentScreen == Screen.SETTINGS) {
-            View focus = settingsPage.findViewWithTag(bundle.getString("appearanceFocus", ""));
-            settingsPage.post(() -> {
+        CueReveal.replace(stage, shell, origin, -1);
+        showPage(screen);
+        if (focusTag != null) shell.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+            @Override public boolean onPreDraw() {
+                if (!shell.isShown()) return true;
+                shell.getViewTreeObserver().removeOnPreDrawListener(this);
+                View focus = shell.findViewWithTag(focusTag);
                 if (focus != null) focus.requestFocus();
-                settingsPage.scrollTo(0, bundle.getInt("settingsScroll"));
-            });
-        }
+                return true;
+            }
+        });
     }
+
+    private LinearLayout body(Screen screen) { return (LinearLayout) screens.get(screen).getChildAt(0); }
 
     private ScrollView page(FrameLayout pages) {
         ScrollView scroll = new ScrollView(this);
@@ -170,7 +192,7 @@ public final class TvHostActivity extends Activity {
         qrTitle.setGravity(Gravity.CENTER);
         ticket.addView(qrTitle, new LinearLayout.LayoutParams(-1, -2));
         spacer(ticket, 12);
-        int side = compact ? 134 : 182;
+        int side = compact ? 126 : 160;
         qrIntro = column();
         qrIntro.setGravity(Gravity.CENTER);
         ImageView link = icon(R.drawable.ic_qr, colors.accent, compact ? 18 : 24);
@@ -190,13 +212,36 @@ public final class TvHostActivity extends Activity {
     }
 
     private void buildSettings(LinearLayout page) {
-        page.addView(label(tr("Настройки телевизора"), 32, colors.text, true));
-        spacer(page, 18);
+        heading(page, "Настройки телевизора");
+        LinearLayout preferences = card(16);
+        page.addView(preferences);
+        Button appearance = settingsLink(preferences, "Оформление", R.drawable.ic_appearance, Screen.APPEARANCE);
+        settingsTab.setNextFocusRightId(appearance.getId());
+        settingsLink(preferences, "Язык", R.drawable.ic_language, Screen.LANGUAGE);
+        spacer(page, 12);
+        LinearLayout app = card(16);
+        page.addView(app);
+        settingsLink(app, "Управление", R.drawable.ic_settings, Screen.CONTROLS);
+        settingsLink(app, "Диагностика", R.drawable.ic_source, Screen.DIAGNOSTICS);
+    }
+
+    private Button settingsLink(LinearLayout group, String title, int glyph, Screen screen) {
+        Button link = button(group, title, glyph, () -> showPage(screen));
+        link.setTag(screen);
+        return link;
+    }
+
+    private void heading(LinearLayout page, String title) {
+        page.addView(label(tr(title), 32, colors.text, true));
+        spacer(page, 14);
+    }
+
+    private void buildControls(LinearLayout page) {
+        heading(page, "Управление");
         LinearLayout playback = card(16);
         page.addView(playback);
         playback.addView(label(tr("Воспроизведение"), 19, colors.text, true));
-        Switch startup = option(playback, "Запускать пульт после включения ТВ", TvHostService.KEEP_AT_BOOT, true);
-        settingsTab.setNextFocusRightId(startup.getId());
+        option(playback, "Запускать пульт после включения ТВ", TvHostService.KEEP_AT_BOOT, true);
         option(playback, "Передавать обложки", TvHostService.INCLUDE_COVERS, true);
         spacer(page, 11);
         LinearLayout navigation = card(16);
@@ -208,46 +253,93 @@ public final class TvHostActivity extends Activity {
         navigation.addView(navigationStatus);
         button(navigation, "Доступ к навигации", R.drawable.ic_right,
             () -> openSystem(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-        spacer(page, 11);
-        LinearLayout appearance = card(16);
+    }
+
+    private void buildAppearance(LinearLayout page) {
+        heading(page, "Оформление");
+        LinearLayout preview = card(14);
+        page.addView(preview, new LinearLayout.LayoutParams(-1, dp(91)));
+        preview.setGravity(Gravity.CENTER);
+        LinearLayout sample = new LinearLayout(this);
+        sample.setGravity(Gravity.CENTER_VERTICAL);
+        sample.setPadding(dp(13), 0, dp(13), 0);
+        sample.setBackground(shape(colors.raised, 18));
+        preview.addView(sample, new LinearLayout.LayoutParams(dp(215), dp(58)));
+        ImageView art = icon(R.drawable.ic_logo, colors.onAccent, 8);
+        art.setBackground(shape(colors.accent, 12));
+        sample.addView(art, new LinearLayout.LayoutParams(dp(35), dp(35)));
+        TextView title = label("CueRelay", 18, colors.text, true);
+        title.setPadding(dp(10), 0, 0, 0);
+        sample.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        ImageView play = icon(R.drawable.ic_play, colors.accent, 4);
+        sample.addView(play, new LinearLayout.LayoutParams(dp(29), dp(29)));
+        preview.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        spacer(page, 12);
+        page.addView(label(tr("Тема"), 15, colors.dim, true));
+        LinearLayout appearance = card(8);
         page.addView(appearance);
-        appearance.addView(label(tr("Оформление"), 19, colors.text, true));
-        TextView theme = label(tr("Тема"), 14, colors.dim, true);
-        appearance.addView(theme);
         for (String value : new String[]{"system", "light", "dark"}) {
-            String title = "system".equals(value) ? "Системная" : "light".equals(value) ? "Светлая" : "Тёмная";
+            String mode = "system".equals(value) ? "Как на устройстве" : "light".equals(value) ? "Светлая" : "Тёмная";
             int glyph = "system".equals(value) ? R.drawable.ic_monitor : "light".equals(value) ? R.drawable.ic_sun : R.drawable.ic_moon;
-            appearanceButton(appearance, title, glyph, "theme", value, Appearance.theme(this));
+            appearanceButton(appearance, mode, glyph, "theme", value, Appearance.theme(this), Screen.APPEARANCE);
         }
-        spacer(appearance, 12);
-        appearance.addView(label(tr("Акцентный цвет"), 14, colors.dim, true));
+        spacer(page, 11);
+        page.addView(label(tr("Акцентный цвет"), 15, colors.dim, true));
         LinearLayout accents = new LinearLayout(this);
-        appearance.addView(accents);
+        accents.setGravity(Gravity.CENTER);
+        accents.setPadding(dp(12), dp(8), dp(12), dp(8));
+        accents.setBackground(shape(colors.panel, 23));
+        page.addView(accents, new LinearLayout.LayoutParams(-1, -2));
         for (Appearance.Colorway color : Appearance.Colorway.values()) {
-            LinearLayout item = column();
-            LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(0, -2, 1);
-            size.rightMargin = dp(4);
-            accents.addView(item, size);
-            Button swatch = appearanceButton(item, color.label, R.drawable.ic_selected, "accent", color.key, Appearance.accentKey(this));
-            swatch.setCompoundDrawableTintList(ColorStateList.valueOf(Appearance.palette(color.key, Appearance.dark(this)).accent));
+            FrameLayout cell = new FrameLayout(this);
+            accents.addView(cell, new LinearLayout.LayoutParams(0, dp(52), 1));
+            boolean selected = color.key.equals(Appearance.accentKey(this));
+            ImageView swatch = icon(selected ? R.drawable.ic_check : 0,
+                Color.luminance(color.seed) > .179f ? Color.BLACK : Color.WHITE, 13);
+            swatch.setContentDescription(tr(color.label));
+            swatch.setTag("accent" + color.key);
+            swatch.setSelected(selected);
+            swatch.setFocusable(true);
+            swatch.setOnClickListener(v -> choose(v, "accent", color.key, Screen.APPEARANCE, Appearance.accentKey(this)));
+            swatch.setOnFocusChangeListener((v, focused) -> paintSwatch(v, color.seed, focused, selected));
+            paintSwatch(swatch, color.seed, false, selected);
+            cell.addView(swatch, new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER));
         }
     }
 
-    private Button appearanceButton(LinearLayout parent, String title, int glyph, String setting, String value, String current) {
-        Button choice = button(parent, title, glyph, () -> {
-            if (value.equals(Pairing.prefs(this).getString(setting, setting.equals("theme") ? "system" : "green"))) return;
-            appearanceFocus = setting + value;
-            Pairing.prefs(this).edit().putString(setting, value).apply();
-            recreate();
-        });
+    private void paintSwatch(View swatch, int color, boolean focused, boolean selected) {
+        GradientDrawable ring = shape(Color.TRANSPARENT, 26);
+        if (focused || selected) ring.setStroke(dp(focused ? 3 : 2), focused ? colors.text : colors.accent);
+        swatch.setBackground(new android.graphics.drawable.LayerDrawable(new Drawable[]{ring,
+            new android.graphics.drawable.InsetDrawable(shape(color, 24), dp(6))}));
+    }
+
+    private void choose(View source, String setting, String value, Screen screen, String current) {
+        if (value.equals(current)) return;
+        Point origin = CueReveal.center(source);
+        Pairing.prefs(this).edit().putString(setting, value).apply();
+        buildUi(screen, origin, setting + value);
+    }
+
+    private Button appearanceButton(LinearLayout parent, String title, int glyph, String setting, String value, String current, Screen screen) {
+        Button choice = button(parent, title, glyph, () -> { });
+        choice.setOnClickListener(v -> choose(v, setting, value, screen, current));
         choice.setTag(setting + value);
         choice.setSelected(value.equals(current));
         return choice;
     }
 
+    private void buildLanguage(LinearLayout page) {
+        heading(page, "Язык");
+        LinearLayout choices = card(12);
+        page.addView(choices);
+        for (String language : new String[]{"ru", "en"})
+            appearanceButton(choices, "ru".equals(language) ? "Русский" : "English", R.drawable.ic_language,
+                UiText.LANGUAGE, language, UiText.language(this), Screen.LANGUAGE);
+    }
+
     private void buildRemotes(LinearLayout page) {
-        page.addView(label(tr("Привязанные пульты"), 32, colors.text, true));
-        spacer(page, 18);
+        heading(page, "Устройства");
         remoteList = card(16);
         page.addView(remoteList);
     }
@@ -264,7 +356,7 @@ public final class TvHostActivity extends Activity {
         remoteList.removeAllViews();
         List<Map.Entry<String, String>> entries = new ArrayList<>(visibleRemotes.entrySet());
         entries.sort(Map.Entry.<String, String>comparingByValue(String.CASE_INSENSITIVE_ORDER).thenComparing(Map.Entry.comparingByKey()));
-        if (entries.isEmpty()) remoteList.addView(label(tr("Нет привязанных пультов"), 16, colors.dim, false));
+        if (entries.isEmpty()) remoteList.addView(label(tr("Нет привязанных устройств"), 16, colors.dim, false));
         Button first = null;
         for (int i = 0; i < entries.size(); i++) {
             Map.Entry<String, String> entry = entries.get(i);
@@ -308,30 +400,39 @@ public final class TvHostActivity extends Activity {
     private void showPage(Screen screen) {
         boolean changed = currentScreen != screen;
         currentScreen = screen;
-        if (screen == Screen.REMOTES) refreshRemotes();
-        connectionPage.setVisibility(screen == Screen.CONNECTION ? View.VISIBLE : View.GONE);
-        settingsPage.setVisibility(screen == Screen.SETTINGS ? View.VISIBLE : View.GONE);
-        remotesPage.setVisibility(screen == Screen.REMOTES ? View.VISIBLE : View.GONE);
+        if (screen == Screen.DEVICES) refreshRemotes();
+        if (changed && screen == Screen.DIAGNOSTICS) buildDiagnostics();
+        screens.forEach((destination, page) -> page.setVisibility(destination == screen ? View.VISIBLE : View.GONE));
         connectionTab.setSelected(screen == Screen.CONNECTION);
-        settingsTab.setSelected(screen == Screen.SETTINGS);
-        remotesTab.setSelected(screen == Screen.REMOTES);
-        Button tab = screen == Screen.CONNECTION ? connectionTab : screen == Screen.SETTINGS ? settingsTab : remotesTab;
-        tab.requestFocus();
-        if (changed) enter(screen == Screen.CONNECTION ? connectionPage : screen == Screen.SETTINGS ? settingsPage : remotesPage, 0, 15);
+        settingsTab.setSelected(screen.ordinal() >= Screen.SETTINGS.ordinal());
+        remotesTab.setSelected(screen == Screen.DEVICES);
+        Button tab = screen == Screen.CONNECTION ? connectionTab : screen == Screen.DEVICES ? remotesTab : settingsTab;
+        if (screen.ordinal() > Screen.SETTINGS.ordinal()) {
+            ArrayList<View> focusable = body(screen).getFocusables(View.FOCUS_FORWARD);
+            if (!focusable.isEmpty()) focusable.get(0).requestFocus();
+        } else tab.requestFocus();
+        if (changed) {
+            ScrollView page = screens.get(screen);
+            enter(page, 0, 0);
+        }
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
         if (currentScreen == null) return;
         state.putInt("screen", currentScreen.ordinal());
-        state.putInt("settingsScroll", settingsPage.getScrollY());
-        state.putString("appearanceFocus", appearanceFocus);
+        state.putBoolean("exporting", logExport != null);
     }
 
     @Override public void onBackPressed() {
-        if (currentScreen == Screen.REMOTES && removingRemote != null) {
+        if (currentScreen == Screen.DEVICES && removingRemote != null) {
             removingRemote = null;
             renderRemotes(true);
+        } else if (currentScreen.ordinal() > Screen.SETTINGS.ordinal()) {
+            Screen previous = currentScreen;
+            showPage(Screen.SETTINGS);
+            View link = body(Screen.SETTINGS).findViewWithTag(previous);
+            if (link != null) link.requestFocus();
         } else if (currentScreen != Screen.CONNECTION) showPage(Screen.CONNECTION);
         else if (confirmation.getVisibility() == View.VISIBLE) cancelDisconnect();
         else super.onBackPressed();
@@ -359,6 +460,78 @@ public final class TvHostActivity extends Activity {
     private void openSystem(String action) {
         try { startActivity(new Intent(action)); }
         catch (android.content.ActivityNotFoundException ignored) { }
+    }
+
+    private String readLog() {
+        try { return Diagnostics.read(this); }
+        catch (java.io.IOException error) { return ""; }
+    }
+
+    private void buildDiagnostics() {
+        LinearLayout page = body(Screen.DIAGNOSTICS);
+        page.removeAllViews();
+        heading(page, "Диагностика");
+        Diagnostics.record(this, "tv", "diagnostics_opened", null);
+        String report = readLog();
+        LinearLayout actions = card(12);
+        page.addView(actions);
+        if (report.isEmpty()) {
+            actions.addView(label(tr("Журнал пока пуст."), 16, colors.dim, false));
+            return;
+        }
+        button(actions, "Отправить журнал", R.drawable.ic_source, () -> shareLog(report));
+        button(actions, "Сохранить журнал", R.drawable.ic_right, () -> saveLog(report));
+        spacer(page, 12);
+        LinearLayout preview = card(12);
+        page.addView(preview);
+        String[] lines = report.split("\n");
+        for (int i = lines.length - 1; i >= Math.max(0, lines.length - 4); i--) {
+            TextView line = label(lines[i], 13, colors.dim, false);
+            line.setTypeface(Typeface.MONOSPACE);
+            preview.addView(line);
+            if (i > Math.max(0, lines.length - 4)) spacer(preview, 7);
+        }
+    }
+
+    private void shareLog(String report) {
+        java.io.File file = new java.io.File(getCacheDir(), SharedFiles.TV_DIAGNOSTICS);
+        try (java.io.FileOutputStream stream = new java.io.FileOutputStream(file)) {
+            stream.write(report.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            android.net.Uri uri = SharedFiles.uri(this, SharedFiles.TV_DIAGNOSTICS);
+            Intent share = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            share.setClipData(android.content.ClipData.newRawUri(SharedFiles.TV_DIAGNOSTICS, uri));
+            startActivity(Intent.createChooser(share, tr("Отправить журнал")));
+        } catch (android.content.ActivityNotFoundException error) { saveLog(report); }
+        catch (java.io.IOException error) { exportError(); }
+    }
+
+    private void saveLog(String report) {
+        logExport = report;
+        try {
+            startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("text/plain").putExtra(Intent.EXTRA_TITLE, SharedFiles.TV_DIAGNOSTICS), EXPORT_LOG);
+        } catch (android.content.ActivityNotFoundException error) {
+            logExport = null;
+            exportError();
+        }
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request != EXPORT_LOG) return;
+        String report = logExport;
+        logExport = null;
+        if (result != RESULT_OK || data == null || data.getData() == null || report == null) return;
+        try (java.io.OutputStream stream = getContentResolver().openOutputStream(data.getData())) {
+            if (stream == null) throw new java.io.IOException();
+            stream.write(report.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            android.widget.Toast.makeText(this, tr("Журнал сохранён"), android.widget.Toast.LENGTH_SHORT).show();
+        } catch (java.io.IOException | SecurityException error) { exportError(); }
+    }
+
+    private void exportError() {
+        android.widget.Toast.makeText(this, tr("Не удалось сохранить журнал."), android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private void cancelDisconnect() {
@@ -398,7 +571,7 @@ public final class TvHostActivity extends Activity {
             host == null ? "Покажи QR-код, чтобы подключить телефон." : "Пульт готов");
         String count = tr("Привязано пультов: {0}").replace("{0}", Integer.toString(TvHostService.controllerCount(this)));
         if (!count.contentEquals(controllers.getText())) controllers.setText(count);
-        if (currentScreen == Screen.REMOTES || visibleRemotes == null) refreshRemotes();
+        if (currentScreen == Screen.DEVICES || visibleRemotes == null) refreshRemotes();
         updateText(navigationStatus, hasNavigationAccess() ?
             "Системный доступ разрешён" : "Разреши доступ к навигации на ТВ.");
     }
@@ -460,11 +633,15 @@ public final class TvHostActivity extends Activity {
         button.setBackground(background);
         button.setStateListAnimator(null);
         button.setOnFocusChangeListener((view, focused) -> {
-            if (android.animation.ValueAnimator.areAnimatorsEnabled())
-                view.animate().scaleX(focused ? 1.025f : 1f).scaleY(focused ? 1.025f : 1f).setDuration(125).start();
+            if (android.animation.ValueAnimator.areAnimatorsEnabled()) {
+                float grow = Math.min(.025f, dp(7) / (float) Math.max(1, view.getWidth()));
+                view.animate().scaleX(focused ? 1f + grow : 1f).scaleY(focused ? 1.025f : 1f).setDuration(125).start();
+            }
         });
         button.setOnClickListener(v -> action.run());
-        LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-1, dp(45));
+        LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-1, -2);
+        button.setMinimumHeight(dp(44));
+        button.setPadding(dp(12), dp(5), dp(10), dp(5));
         size.topMargin = dp(5);
         group.addView(button, size);
         return button;
@@ -504,6 +681,8 @@ public final class TvHostActivity extends Activity {
         LinearLayout group = column();
         int inset = dp(padding);
         group.setPadding(inset, inset, inset, inset);
+        group.setClipChildren(false);
+        group.setClipToPadding(false);
         group.setBackground(shape(colors.panel, 24));
         return group;
     }
@@ -515,10 +694,12 @@ public final class TvHostActivity extends Activity {
     private void enter(View view, int y, int x) {
         if (!android.animation.ValueAnimator.areAnimatorsEnabled()) return;
         view.animate().cancel();
-        view.setAlpha(0f);
+        view.setAlpha(.20f);
         view.setTranslationX(dp(x));
         view.setTranslationY(dp(y));
-        view.animate().alpha(1f).translationX(0).translationY(0).setDuration(210)
+        view.setScaleX(.98f);
+        view.setScaleY(.98f);
+        view.animate().alpha(1f).translationX(0).translationY(0).scaleX(1).scaleY(1).setDuration(290)
             .setInterpolator(new android.view.animation.PathInterpolator(.2f, .75f, .25f, 1f)).start();
     }
 

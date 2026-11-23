@@ -67,6 +67,7 @@ public final class TvHostService extends Service {
     @Override public void onCreate() {
         super.onCreate();
         instance = this;
+        Diagnostics.record(this, "tv", "host_started", null);
         media = new PhoneMedia.Exchange(this, ui, () -> {}, true);
         worker.execute(this::serve);
     }
@@ -117,7 +118,9 @@ public final class TvHostService extends Service {
         if (!keys.remove(key)) return true;
         JSONObject names = names(this);
         names.remove(key);
-        return saveControllers(keys, names);
+        boolean saved = saveControllers(keys, names);
+        if (saved) Diagnostics.record(this, "tv", "device_unpaired", null);
+        return saved;
     }
 
     private static JSONObject names(Context context) {
@@ -240,6 +243,7 @@ public final class TvHostService extends Service {
                 JSONObject names = names(this).put(key, controllerName(request));
                 if (!saveControllers(keys, names)) throw new IllegalStateException("Could not save TV controllers");
                 invitation = null;
+                Diagnostics.record(this, "tv", "device_paired", null);
                 return new JSONObject().put("token", credential).put("device", PhoneMedia.deviceName(this));
             }
             String key = hash(token);

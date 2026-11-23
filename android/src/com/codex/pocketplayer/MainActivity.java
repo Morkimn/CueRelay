@@ -26,7 +26,6 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewAnimationUtils;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -98,6 +97,8 @@ public final class MainActivity extends Activity {
     private TvController tv;
     private boolean tvMode;
     private View tvPad, tvPower;
+    private FrameLayout tvRing;
+    private int tvRingLimit;
     private ImageView tvLike, tvDislike;
     private TextView tvPadNote;
     private final java.util.List<View> tvKeys = new java.util.ArrayList<>();
@@ -185,7 +186,7 @@ public final class MainActivity extends Activity {
                     appearance ? this::appearanceContent : this::settingsContent,
                     appearance ? this::settings : this::closePanel, appearance);
                 ScrollView scroll = (ScrollView) next.getTag();
-                reveal(sheetSurface, next, origin, -2);
+                CueReveal.replace(sheetSurface, next, origin, -2);
                 scroll.post(() -> scroll.scrollTo(0, scrollY));
             }
         }
@@ -206,6 +207,13 @@ public final class MainActivity extends Activity {
         tv.polling(tvMode);
         if (pageScroll != null) pageScroll.scrollTo(0, 0);
         render(null);
+        if (android.animation.ValueAnimator.areAnimatorsEnabled()) {
+            content.setAlpha(.45f);
+            content.setScaleX(.98f);
+            content.setScaleY(.98f);
+            content.animate().alpha(1).scaleX(1).scaleY(1).setDuration(270)
+                .setInterpolator(new PathInterpolator(.18f, .8f, .24f, 1f)).start();
+        }
     }
 
     @Override public void onBackPressed() {
@@ -239,7 +247,7 @@ public final class MainActivity extends Activity {
             swipeY = event.getRawY();
             pageSwipe = sheet == null && (volumePopup == null || !volumePopup.isShowing()) &&
                 within(pageScroll, swipeX, swipeY) && !within(dockSurface, swipeX, swipeY) &&
-                (page != Page.PLAYER || !within(seek, swipeX, swipeY));
+                (page != Page.PLAYER || !within(seek, swipeX, swipeY) && !within(volume, swipeX, swipeY));
         } else if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN) {
             pageSwipe = false;
             if (pageDrag != null) {
@@ -380,6 +388,7 @@ public final class MainActivity extends Activity {
         widgetFab = null;
         tvFab = null;
         tvPad = null;
+        tvRing = null;
         tvPower = null;
         tvKeys.clear();
         pageDock = null;
@@ -435,14 +444,19 @@ public final class MainActivity extends Activity {
         scroll.setFillViewport(true);
         content = column();
         int dockSpace = DOCK_HEIGHT + DOCK_BOTTOM;
-        int bottomSpace = page == Page.PLAYER ? dockSpace + WIDGET_BUTTON_GAP + TARGET_BUTTON_SIZE +
-            (paired ? WIDGET_BUTTON_SIZE + 23 : 14) : dockSpace + 19;
-        content.setPadding(dp(18), dp(18), dp(18), dp(bottomSpace));
-        scroll.addView(content);
-        root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout header = row();
         boolean playerPage = page == Page.PLAYER;
         boolean tvPlayer = playerPage && tvMode;
+        int bottomSpace = dockSpace + WIDGET_BUTTON_GAP + TARGET_BUTTON_SIZE + (paired && !tvPlayer ? WIDGET_BUTTON_SIZE + 18 : 8);
+        if (playerPage) {
+            scroll.setVerticalScrollBarEnabled(false);
+            scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        }
+        content.setPadding(dp(18), dp(18), dp(18), dp(playerPage ? 0 : dockSpace + 19));
+        scroll.addView(content);
+        FrameLayout.LayoutParams scrollPosition = new FrameLayout.LayoutParams(-1, -1);
+        if (playerPage) scrollPosition.bottomMargin = dp(bottomSpace);
+        root.addView(scroll, scrollPosition);
+        LinearLayout header = row();
         if (playerPage) {
             ImageView logo = icon(R.drawable.ic_logo, null, onAccent, 7);
             logo.setBackground(shape(accent, 13));
@@ -451,7 +465,7 @@ public final class MainActivity extends Activity {
             logoSize.setMarginEnd(dp(10));
             header.addView(logo, logoSize);
         }
-        TextView name = label(playerPage ? BuildProfile.TITLE : tr(page.label), tvPlayer ? 25 : playerPage ? 34 : 36, text, true);
+        TextView name = label(playerPage ? BuildProfile.TITLE : tr(page.label), tvPlayer ? 22 : playerPage ? 34 : 36, text, true);
         name.setLetterSpacing(-0.027f);
         if (tvPlayer) {
             name.setSingleLine(true);
@@ -476,6 +490,7 @@ public final class MainActivity extends Activity {
             ImageView power = icon(R.drawable.ic_power, tr("Меню питания телевизора"), text, 11);
             power.setBackground(ripple(raised, 20));
             power.setOnClickListener(v -> tv.navigate("power"));
+            springPress(power);
             enabled(power, tv.powerMenu);
             LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(dp(42), dp(42));
             size.setMarginStart(dp(6));
@@ -504,7 +519,7 @@ public final class MainActivity extends Activity {
                 content.addView(button(tr("Подключить телевизор"), true, this::tvSettings), full(48));
             }
         }
-        if (playerPage && paired) {
+        if (playerPage && paired && !tvPlayer) {
             ImageView add = icon(R.drawable.ic_add, tr("Добавить виджет"), dim, 11);
             add.setBackground(ripple(Appearance.mix(background, panel, .55), 15));
             add.setOnClickListener(v -> gallery());
@@ -542,7 +557,7 @@ public final class MainActivity extends Activity {
             activitySurface = new FrameLayout(this);
             setContentView(activitySurface);
         }
-        reveal(activitySurface, root, origin, -1);
+        CueReveal.replace(activitySurface, root, origin, -1);
         root.requestApplyInsets();
         if (scrollY != 0) scroll.post(() -> scroll.scrollTo(0, scrollY));
         if (pageDrag == null && from != null && android.animation.ValueAnimator.areAnimatorsEnabled()) {
@@ -575,14 +590,16 @@ public final class MainActivity extends Activity {
             LinearLayout button = column();
             button.setGravity(Gravity.CENTER);
             button.setSelected(selected);
-            button.setContentDescription(tr(destination.label));
+            boolean remote = destination == Page.PLAYER && tvMode;
+            String tabName = tr(remote ? "Пульт" : destination.label);
+            button.setContentDescription(tabName);
             boolean rtl = getResources().getConfiguration().getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
             boolean first = destination.ordinal() == 0, last = destination.ordinal() == Page.values().length - 1;
             button.setBackground(ripple(corners(Color.TRANSPARENT, (rtl ? last : first) ? 24 : 13,
                 (rtl ? first : last) ? 24 : 13, (rtl ? first : last) ? 24 : 13, (rtl ? last : first) ? 24 : 13)));
-            button.addView(icon(destination.icon, null, tint, 0), new LinearLayout.LayoutParams(dp(21), dp(21)));
+            button.addView(icon(remote ? R.drawable.ic_tv : destination.icon, null, tint, 0), new LinearLayout.LayoutParams(dp(21), dp(21)));
             gap(button, 2);
-            TextView caption = label(tr(destination.label), 12, tint, selected);
+            TextView caption = label(tabName, 12, tint, selected);
             caption.setGravity(Gravity.CENTER);
             caption.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             button.addView(caption, new LinearLayout.LayoutParams(-1, -2));
@@ -813,6 +830,7 @@ public final class MainActivity extends Activity {
         ImageView key = icon(glyph, tr(label), text, 9);
         key.setBackground(ripple(raised, 18));
         key.setOnClickListener(v -> action(command));
+        springPress(key);
         LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(0, dp(46), 1);
         size.setMargins(dp(2), 0, dp(2), 0);
         controls.addView(key, size);
@@ -827,8 +845,10 @@ public final class MainActivity extends Activity {
         padSize.topMargin = dp(18);
         content.addView(pad, padSize);
         android.content.res.Configuration config = getResources().getConfiguration();
-        int diameter = Math.min(340, Math.min(config.screenWidthDp - 52, Math.max(180, config.screenHeightDp - 278)));
+        int diameter = Math.min(340, Math.min(config.screenWidthDp - 58, Math.max(156, config.screenHeightDp - 484)));
         FrameLayout ring = new FrameLayout(this);
+        tvRing = ring;
+        tvRingLimit = diameter;
         ring.setBackground(shape(raised, diameter));
         pad.addView(ring, new LinearLayout.LayoutParams(dp(diameter), dp(diameter)));
         int centerSize = Math.round(diameter * .39f);
@@ -842,15 +862,20 @@ public final class MainActivity extends Activity {
         select.setContentDescription(tr("Выбрать"));
         select.setBackground(ripple(Appearance.mix(raised, accent, .22), centerSize));
         select.setOnClickListener(v -> tv.navigate("select"));
+        springPress(select);
         ring.addView(select, new FrameLayout.LayoutParams(dp(centerSize), dp(centerSize), Gravity.CENTER));
         tvKeys.add(select);
 
         LinearLayout actions = row();
         actions.setGravity(Gravity.CENTER);
+        actions.setPadding(dp(4), dp(4), dp(4), dp(4));
+        actions.setBackground(shape(raised, 30));
         gap(pad, 13);
-        pad.addView(actions);
-        addTvSystemKey(actions, R.drawable.ic_left, "Назад", "back");
-        addTvSystemKey(actions, R.drawable.ic_home, "Домой", "home");
+        LinearLayout.LayoutParams actionsSize = new LinearLayout.LayoutParams(-1, -2);
+        actionsSize.setMargins(dp(4), 0, dp(4), 0);
+        pad.addView(actions, actionsSize);
+        addTvSystemKey(actions, R.drawable.ic_left, "Назад", "back", true);
+        addTvSystemKey(actions, R.drawable.ic_home, "Домой", "home", false);
         tvPadNote = label(tr("Включи навигацию в настройках CueRelay на телевизоре."), 13, dim, false);
         tvPadNote.setGravity(Gravity.CENTER);
         tvPadNote.setPadding(0, dp(12), 0, 0);
@@ -858,11 +883,33 @@ public final class MainActivity extends Activity {
         refreshTvPad();
     }
 
-    private void addTvSystemKey(LinearLayout actions, int glyph, String label, String command) {
-        ImageView key = tvKey(glyph, 0, label, command, 13);
-        key.setBackground(ripple(raised, 26));
-        LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(dp(50), dp(50));
-        size.setMargins(dp(4), 0, dp(4), 0);
+    private void fitTvRing(boolean timeline) {
+        if (tvRing == null) return;
+        int diameter = timeline ? Math.max(156, tvRingLimit - 35) : tvRingLimit;
+        android.view.ViewGroup.LayoutParams outer = tvRing.getLayoutParams();
+        if (outer.width == dp(diameter)) return;
+        outer.width = outer.height = dp(diameter);
+        tvRing.setLayoutParams(outer);
+        int center = Math.round(diameter * .39f), edge = (diameter - center) / 2;
+        for (int i = 0; i < tvRing.getChildCount(); i++) {
+            View key = tvRing.getChildAt(i);
+            android.view.ViewGroup.LayoutParams size = key.getLayoutParams();
+            size.width = size.height = dp(i == 4 ? center : edge);
+            key.setLayoutParams(size);
+            if (i != 4) {
+                int padding = dp((edge - 28) / 2);
+                key.setPadding(padding, padding, padding, padding);
+            }
+        }
+    }
+
+    private void addTvSystemKey(LinearLayout actions, int glyph, String label, String command, boolean first) {
+        ImageView key = tvKey(glyph, 0, label, command, 14);
+        boolean roundLeft = first != (getResources().getConfiguration().getLayoutDirection() == View.LAYOUT_DIRECTION_RTL);
+        int left = roundLeft ? 26 : 12, right = roundLeft ? 12 : 26;
+        key.setBackground(ripple(corners(Appearance.mix(raised, accent, .10), left, right, right, left)));
+        LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(0, dp(56), 1);
+        size.setMarginStart(first ? 0 : dp(4));
         actions.addView(key, size);
     }
 
@@ -876,6 +923,7 @@ public final class MainActivity extends Activity {
         button.setRotation(rotation);
         button.setBackground(ripple(Color.TRANSPARENT, 28));
         button.setOnClickListener(v -> tv.navigate(key));
+        springPress(button);
         tvKeys.add(button);
         return button;
     }
@@ -919,7 +967,7 @@ public final class MainActivity extends Activity {
         ImageView speaker = icon(R.drawable.ic_volume, null, dim, 8);
         row.addView(speaker, 0, new LinearLayout.LayoutParams(dp(35), dp(35)));
         LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-1, -2);
-        size.setMargins(dp(58), dp(12), dp(58), 0);
+        size.setMargins(dp(4), dp(12), dp(4), 0);
         content.addView(row, size);
         tvVolumeRow = row;
     }
@@ -1026,6 +1074,7 @@ public final class MainActivity extends Activity {
     private void refreshTimeline(Playback.Source active) {
         Playback.Timeline timeline = active == null ? null : active.timeline;
         timelinePanel.setVisibility(timeline == null ? View.GONE : View.VISIBLE);
+        fitTvRing(timeline != null);
         if (timeline == null || seeking != null) return;
         long position = timeline.now();
         seek.setEnabled(timeline.canSeek);
@@ -1887,45 +1936,6 @@ public final class MainActivity extends Activity {
         margin.setPadding(dp(9), 0, dp(9), dp(8));
         margin.addView(frame);
         return margin;
-    }
-
-    private void reveal(FrameLayout host, View next, Point origin, int height) {
-        View old = host.getChildCount() == 0 ? null : host.getChildAt(host.getChildCount() - 1);
-        if (origin == null || old == null || old.getWidth() == 0 || old.getHeight() == 0 ||
-            !android.animation.ValueAnimator.areAnimatorsEnabled()) {
-            host.removeAllViews();
-            host.addView(next, new FrameLayout.LayoutParams(-1, height));
-            return;
-        }
-        Bitmap oldFrame = Bitmap.createBitmap(old.getWidth(), old.getHeight(), Bitmap.Config.ARGB_8888);
-        old.draw(new Canvas(oldFrame));
-        ImageView previous = new ImageView(this);
-        previous.setImageBitmap(oldFrame);
-        previous.setScaleType(ImageView.ScaleType.FIT_XY);
-        host.removeAllViews();
-        host.addView(previous, new FrameLayout.LayoutParams(old.getWidth(), old.getHeight()));
-        next.setVisibility(View.INVISIBLE);
-        host.addView(next, new FrameLayout.LayoutParams(-1, height));
-        next.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
-            @Override public boolean onPreDraw() {
-                if (!next.isAttachedToWindow()) return true;
-                next.getViewTreeObserver().removeOnPreDrawListener(this);
-                int[] location = new int[2];
-                next.getLocationOnScreen(location);
-                int x = Math.max(0, Math.min(next.getWidth(), origin.x - location[0]));
-                int y = Math.max(0, Math.min(next.getHeight(), origin.y - location[1]));
-                float radius = (float) Math.hypot(Math.max(x, next.getWidth() - x), Math.max(y, next.getHeight() - y));
-                next.setVisibility(View.VISIBLE);
-                android.animation.Animator animation = ViewAnimationUtils.createCircularReveal(next, x, y, 0, radius);
-                animation.setDuration(520);
-                animation.setInterpolator(new android.view.animation.DecelerateInterpolator(1.7f));
-                animation.addListener(new android.animation.AnimatorListenerAdapter() {
-                    @Override public void onAnimationEnd(android.animation.Animator animator) { host.removeView(previous); }
-                });
-                animation.start();
-                return true;
-            }
-        });
     }
 
     private LinearLayout menuRow(LinearLayout list, int glyph, String name, String details, boolean checked, Runnable click) {
