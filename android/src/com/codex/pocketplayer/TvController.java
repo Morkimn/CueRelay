@@ -18,7 +18,7 @@ final class TvController implements AutoCloseable {
     private final Runnable tick = () -> request("state", null, null);
     Pairing paired;
     Playback playback;
-    boolean navigation;
+    boolean navigation, powerMenu;
     String status = "", selected = "";
 
     TvController(Context context, Handler ui) {
@@ -62,6 +62,7 @@ final class TvController implements AutoCloseable {
                     playback = null;
                     selected = "";
                     navigation = false;
+                    powerMenu = false;
                 }
                 result.accept(target != null);
                 if (target != null) refresh();
@@ -110,15 +111,18 @@ final class TvController implements AutoCloseable {
                         paired = null;
                         playback = null;
                         navigation = false;
+                        powerMenu = false;
                         valid = true;
                     } else if (state != null && state.has("status")) {
                         status = state.optString("status");
                         navigation = state.optBoolean("navigation");
+                        powerMenu = state.optBoolean("powerMenu");
                         try { playback = Playback.fromTv(state, selected, playback); }
                         catch (org.json.JSONException ignored) { playback = null; }
                     } else if (state == null || "unauthorized".equals(state.optString("error"))) {
                         playback = null;
                         navigation = false;
+                        powerMenu = false;
                         status = state == null ? "" : "unauthorized";
                     }
                 }

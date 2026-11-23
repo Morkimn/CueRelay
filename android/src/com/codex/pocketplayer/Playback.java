@@ -86,6 +86,7 @@ final class Playback {
     static final class Source {
         final String id, app, title, artist, artwork;
         final boolean playing, toggle, previous, next;
+        final int rating, ratingSelected;
         final Timeline timeline;
         Source(JSONObject data) throws org.json.JSONException {
             id = data.getString("id");
@@ -97,6 +98,8 @@ final class Playback {
             toggle = data.optBoolean("toggle");
             previous = data.optBoolean("previous");
             next = data.optBoolean("next");
+            rating = data.optInt("rating");
+            ratingSelected = data.optInt("ratingSelected") & rating;
             JSONObject rawTimeline = data.optJSONObject("timeline");
             timeline = rawTimeline == null || rawTimeline.optLong("durationMs") <= 0 ? null : new Timeline(rawTimeline);
         }

@@ -86,6 +86,7 @@ public final class MainActivity extends Activity {
     private ViewFlipper toggle;
     private SeekBar seek, volume;
     private ImageView volumeButton;
+    private View tvVolumeRow;
     private PopupWindow volumePopup;
     private TextView volumePercent;
     private boolean adjustingVolume;
@@ -96,7 +97,8 @@ public final class MainActivity extends Activity {
     private View dockSurface, widgetFab, tvFab;
     private TvController tv;
     private boolean tvMode;
-    private View tvPad;
+    private View tvPad, tvPower;
+    private ImageView tvLike, tvDislike;
     private TextView tvPadNote;
     private final java.util.List<View> tvKeys = new java.util.ArrayList<>();
     private DockTouch pageDock;
@@ -202,6 +204,7 @@ public final class MainActivity extends Activity {
     private void switchTarget() {
         tvMode = !tvMode;
         tv.polling(tvMode);
+        if (pageScroll != null) pageScroll.scrollTo(0, 0);
         render(null);
     }
 
@@ -377,9 +380,12 @@ public final class MainActivity extends Activity {
         widgetFab = null;
         tvFab = null;
         tvPad = null;
+        tvPower = null;
         tvKeys.clear();
         pageDock = null;
         dismissVolume();
+        volumeButton = null;
+        tvVolumeRow = null;
         ui.removeCallbacks(sendVolume);
         volumeQuietUntil = 0;
         dark = Appearance.dark(this);
@@ -436,6 +442,7 @@ public final class MainActivity extends Activity {
         root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout header = row();
         boolean playerPage = page == Page.PLAYER;
+        boolean tvPlayer = playerPage && tvMode;
         if (playerPage) {
             ImageView logo = icon(R.drawable.ic_logo, null, onAccent, 7);
             logo.setBackground(shape(accent, 13));
@@ -444,9 +451,13 @@ public final class MainActivity extends Activity {
             logoSize.setMarginEnd(dp(10));
             header.addView(logo, logoSize);
         }
-        TextView name = label(playerPage ? BuildProfile.TITLE : tr(page.label), playerPage ? 34 : 36, text, true);
+        TextView name = label(playerPage ? BuildProfile.TITLE : tr(page.label), tvPlayer ? 25 : playerPage ? 34 : 36, text, true);
         name.setLetterSpacing(-0.027f);
-        header.addView(name, (paired || tvMode) && playerPage ? new LinearLayout.LayoutParams(-2, -2)
+        if (tvPlayer) {
+            name.setSingleLine(true);
+            name.setEllipsize(TextUtils.TruncateAt.END);
+        }
+        header.addView(name, paired && playerPage && !tvPlayer ? new LinearLayout.LayoutParams(-2, -2)
             : new LinearLayout.LayoutParams(0, -2, 1));
         status = label("", 13, dim, true);
         status.setPadding(dp(11), dp(7), dp(11), dp(7));
@@ -456,9 +467,20 @@ public final class MainActivity extends Activity {
         if ((paired || tvMode) && playerPage) {
             FrameLayout statusSlot = new FrameLayout(this);
             statusSlot.addView(status, new FrameLayout.LayoutParams(-2, -2, Gravity.END | Gravity.CENTER_VERTICAL));
-            LinearLayout.LayoutParams statusSize = new LinearLayout.LayoutParams(0, -2, 1);
+            LinearLayout.LayoutParams statusSize = tvPlayer ? new LinearLayout.LayoutParams(-2, -2) :
+                new LinearLayout.LayoutParams(0, -2, 1);
             statusSize.setMarginStart(dp(10));
             header.addView(statusSlot, statusSize);
+        }
+        if (tvPlayer) {
+            ImageView power = icon(R.drawable.ic_power, tr("Меню питания телевизора"), text, 11);
+            power.setBackground(ripple(raised, 20));
+            power.setOnClickListener(v -> tv.navigate("power"));
+            enabled(power, tv.powerMenu);
+            LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(dp(42), dp(42));
+            size.setMarginStart(dp(6));
+            header.addView(power, size);
+            tvPower = power;
         }
         content.addView(header);
         updateNotice = button("", true, this::updatesPanel);
@@ -475,7 +497,8 @@ public final class MainActivity extends Activity {
         if (!paired && !tvMode && playerPage) {
             renderPairing();
         } else if (page == Page.PLAYER) {
-            renderPlayer();
+            if (tvMode) renderTvPlayer();
+            else renderPlayer();
             if (tvMode && tv.paired == null) {
                 gap(content, 12);
                 content.addView(button(tr("Подключить телевизор"), true, this::tvSettings), full(48));
@@ -737,21 +760,7 @@ public final class MainActivity extends Activity {
         previous.setOnClickListener(v -> action("previous"));
         LinearLayout.LayoutParams previousSize = new LinearLayout.LayoutParams(dp(skipWidth), dp(skipWidth));
         controls.addView(previous, previousSize);
-        toggle = (ViewFlipper) getLayoutInflater().inflate(R.layout.widget_toggle, controls, false);
-        GradientDrawable playShape = shape(accent, 26);
-        playShape.setCornerRadii(new float[]{dp(27), dp(27), dp(20), dp(20), dp(26), dp(26), dp(20), dp(20)});
-        toggle.setBackground(new RippleDrawable(ColorStateList.valueOf(0x26000000), playShape, null));
-        for (int id : new int[]{R.id.play_glyph, R.id.pause_glyph, R.id.retry_glyph}) {
-            ImageView glyph = toggle.findViewById(id);
-            glyph.setPadding(dp(14), dp(14), dp(14), dp(14));
-            glyph.setColorFilter(onAccent);
-        }
-        toggle.setOnClickListener(v -> action("toggle"));
-        springPress(toggle);
-        LinearLayout.LayoutParams main = new LinearLayout.LayoutParams(dp(compactControls ? 60 : 70), dp(61));
-        int playGap = dp(compactControls ? 5 : 7);
-        main.setMargins(playGap, 0, playGap, 0);
-        controls.addView(toggle, main);
+        addPlayToggle(controls, compactControls ? 60 : 70, 61, compactControls ? 5 : 7, false);
         next = icon(R.drawable.ic_next, tr("Следующий трек"), text, 13);
         next.setBackground(ripple(raised, 17));
         next.setOnClickListener(v -> action("next"));
@@ -760,46 +769,88 @@ public final class MainActivity extends Activity {
         playbackRow.addView(controls, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
         addVolume(playbackRow);
         card.addView(playbackRow, new LinearLayout.LayoutParams(-1, -2));
-        if (tvMode) addTvPad();
+    }
+
+    private void addPlayToggle(LinearLayout controls, int width, int height, int margin, boolean compact) {
+        toggle = (ViewFlipper) getLayoutInflater().inflate(R.layout.widget_toggle, controls, false);
+        GradientDrawable playShape = shape(accent, 26);
+        if (!compact) playShape.setCornerRadii(new float[]{dp(27), dp(27), dp(20), dp(20), dp(26), dp(26), dp(20), dp(20)});
+        toggle.setBackground(new RippleDrawable(ColorStateList.valueOf(0x26000000), playShape, null));
+        for (int id : new int[]{R.id.play_glyph, R.id.pause_glyph, R.id.retry_glyph}) {
+            ImageView glyph = toggle.findViewById(id);
+            int padding = dp(compact ? 9 : 14);
+            glyph.setPadding(padding, padding, padding, padding);
+            glyph.setColorFilter(onAccent);
+        }
+        toggle.setOnClickListener(v -> action("toggle"));
+        springPress(toggle);
+        LinearLayout.LayoutParams main = new LinearLayout.LayoutParams(dp(width), dp(height));
+        main.setMargins(dp(margin), 0, dp(margin), 0);
+        controls.addView(toggle, main);
+    }
+
+    private void renderTvPlayer() {
+        LinearLayout strip = column();
+        strip.setPadding(dp(7), dp(7), dp(7), dp(7));
+        strip.setBackground(shape(panel, 28));
+        content.addView(strip, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout controls = row();
+        controls.setGravity(Gravity.CENTER);
+        strip.addView(controls, new LinearLayout.LayoutParams(-1, -2));
+        tvDislike = tvMediaKey(controls, R.drawable.ic_dislike, "Дизлайк", "dislike");
+        previous = tvMediaKey(controls, R.drawable.ic_previous, "Предыдущий трек", "previous");
+        addPlayToggle(controls, 62, 48, 5, true);
+        next = tvMediaKey(controls, R.drawable.ic_next, "Следующий трек", "next");
+        tvLike = tvMediaKey(controls, R.drawable.ic_like, "Лайк", "like");
+        addTimeline(strip);
+        if (tv.paired != null) {
+            addTvPad();
+            addTvVolume();
+        }
+    }
+
+    private ImageView tvMediaKey(LinearLayout controls, int glyph, String label, String command) {
+        ImageView key = icon(glyph, tr(label), text, 9);
+        key.setBackground(ripple(raised, 18));
+        key.setOnClickListener(v -> action(command));
+        LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(0, dp(46), 1);
+        size.setMargins(dp(2), 0, dp(2), 0);
+        controls.addView(key, size);
+        return key;
     }
 
     private void addTvPad() {
-        gap(content, 12);
-        LinearLayout pad = card(content);
+        LinearLayout pad = column();
         tvPad = pad;
         pad.setGravity(Gravity.CENTER_HORIZONTAL);
-        pad.addView(label(tr("Навигация по телевизору"), 17, text, true));
-        gap(pad, 15);
-        int diameter = Math.min(232, Math.max(172, getResources().getConfiguration().screenWidthDp - 88));
+        LinearLayout.LayoutParams padSize = new LinearLayout.LayoutParams(-1, -2);
+        padSize.topMargin = dp(18);
+        content.addView(pad, padSize);
+        android.content.res.Configuration config = getResources().getConfiguration();
+        int diameter = Math.min(340, Math.min(config.screenWidthDp - 52, Math.max(180, config.screenHeightDp - 278)));
         FrameLayout ring = new FrameLayout(this);
         ring.setBackground(shape(raised, diameter));
         pad.addView(ring, new LinearLayout.LayoutParams(dp(diameter), dp(diameter)));
-        int edgeSize = Math.min(58, (diameter - 70) / 2);
+        int centerSize = Math.round(diameter * .39f);
+        int edgeSize = (diameter - centerSize) / 2;
         placeTvKey(ring, R.drawable.ic_right, -90, "Вверх", "up", Gravity.TOP | Gravity.CENTER_HORIZONTAL, edgeSize);
         placeTvKey(ring, R.drawable.ic_left, 0, "Влево", "left", Gravity.START | Gravity.CENTER_VERTICAL, edgeSize);
         placeTvKey(ring, R.drawable.ic_right, 0, "Вправо", "right", Gravity.END | Gravity.CENTER_VERTICAL, edgeSize);
         placeTvKey(ring, R.drawable.ic_right, 90, "Вниз", "down", Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, edgeSize);
-        TextView select = label("OK", 19, onAccent, true);
+        TextView select = label("OK", 21, accent, true);
         select.setGravity(Gravity.CENTER);
         select.setContentDescription(tr("Выбрать"));
-        select.setBackground(ripple(accent, 44));
+        select.setBackground(ripple(Appearance.mix(raised, accent, .22), centerSize));
         select.setOnClickListener(v -> tv.navigate("select"));
-        int centerSize = Math.min(88, diameter - 2 * edgeSize);
         ring.addView(select, new FrameLayout.LayoutParams(dp(centerSize), dp(centerSize), Gravity.CENTER));
         tvKeys.add(select);
 
-        gap(pad, 14);
         LinearLayout actions = row();
         actions.setGravity(Gravity.CENTER);
+        gap(pad, 13);
         pad.addView(actions);
-        for (String action : new String[]{"back", "home"}) {
-            boolean home = "home".equals(action);
-            ImageView key = tvKey(home ? R.drawable.ic_home : R.drawable.ic_left, 0, home ? "Домой" : "Назад", action, 13);
-            key.setBackground(ripple(raised, 24));
-            LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(dp(48), dp(48));
-            size.setMargins(dp(6), 0, dp(6), 0);
-            actions.addView(key, size);
-        }
+        addTvSystemKey(actions, R.drawable.ic_left, "Назад", "back");
+        addTvSystemKey(actions, R.drawable.ic_home, "Домой", "home");
         tvPadNote = label(tr("Включи навигацию в настройках CueRelay на телевизоре."), 13, dim, false);
         tvPadNote.setGravity(Gravity.CENTER);
         tvPadNote.setPadding(0, dp(12), 0, 0);
@@ -807,8 +858,16 @@ public final class MainActivity extends Activity {
         refreshTvPad();
     }
 
+    private void addTvSystemKey(LinearLayout actions, int glyph, String label, String command) {
+        ImageView key = tvKey(glyph, 0, label, command, 13);
+        key.setBackground(ripple(raised, 26));
+        LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(dp(50), dp(50));
+        size.setMargins(dp(4), 0, dp(4), 0);
+        actions.addView(key, size);
+    }
+
     private void placeTvKey(FrameLayout ring, int glyph, int rotation, String label, String key, int gravity, int size) {
-        ImageView button = tvKey(glyph, rotation, label, key, (size - 23) / 2);
+        ImageView button = tvKey(glyph, rotation, label, key, (size - 28) / 2);
         ring.addView(button, new FrameLayout.LayoutParams(dp(size), dp(size), gravity));
     }
 
@@ -822,9 +881,11 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshTvPad() {
+        if (tvPower != null && tvPower.isEnabled() != tv.powerMenu) enabled(tvPower, tv.powerMenu);
         if (tvPad == null) return;
-        tvPad.setVisibility(tv.paired != null && Pairing.prefs(this).getBoolean("tv-navigation-pad", true) ? View.VISIBLE : View.GONE);
-        tvPadNote.setVisibility(tv.navigation ? View.GONE : View.VISIBLE);
+        int visibility = Pairing.prefs(this).getBoolean("tv-navigation-pad", true) ? View.VISIBLE : View.GONE;
+        tvPad.setVisibility(visibility);
+        tvPadNote.setVisibility(tv.playback != null && !tv.navigation ? View.VISIBLE : View.GONE);
         for (View key : tvKeys)
             if (key.isEnabled() != tv.navigation) enabled(key, tv.navigation);
     }
@@ -837,6 +898,33 @@ public final class MainActivity extends Activity {
         volumeButton.setVisibility(View.GONE);
         playbackRow.addView(volumeButton, new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.END | Gravity.CENTER_VERTICAL));
 
+        LinearLayout volumeRow = volumeControls(volumeLabel);
+        volumePopup = new PopupWindow(volumeRow, dp(176), dp(48), true);
+        volumePopup.setBackgroundDrawable(shape(raised, 16));
+        volumePopup.setElevation(dp(8));
+        volumePopup.setOutsideTouchable(true);
+        volumePopup.setOnDismissListener(() -> adjustingVolume = false);
+        volumeButton.setOnClickListener(v -> {
+            if (volumePopup.isShowing()) volumePopup.dismiss();
+            else volumePopup.showAsDropDown(volumeButton, 0,
+                -volumeButton.getHeight() - volumePopup.getHeight() - dp(10), Gravity.END);
+        });
+    }
+
+    private void addTvVolume() {
+        adjustingVolume = false;
+        LinearLayout row = volumeControls(tr("Громкость телевизора"));
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setBackground(shape(panel, 25));
+        ImageView speaker = icon(R.drawable.ic_volume, null, dim, 8);
+        row.addView(speaker, 0, new LinearLayout.LayoutParams(dp(35), dp(35)));
+        LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-1, -2);
+        size.setMargins(dp(58), dp(12), dp(58), 0);
+        content.addView(row, size);
+        tvVolumeRow = row;
+    }
+
+    private LinearLayout volumeControls(String volumeLabel) {
         LinearLayout volumeRow = row();
         volumeRow.setPadding(dp(9), 0, dp(12), 0);
         volume = new SeekBar(this);
@@ -849,16 +937,6 @@ public final class MainActivity extends Activity {
         volumePercent = label("", 12, dim, false);
         volumePercent.setGravity(Gravity.END);
         volumeRow.addView(volumePercent, new LinearLayout.LayoutParams(dp(34), -2));
-        volumePopup = new PopupWindow(volumeRow, dp(176), dp(48), true);
-        volumePopup.setBackgroundDrawable(shape(raised, 16));
-        volumePopup.setElevation(dp(8));
-        volumePopup.setOutsideTouchable(true);
-        volumePopup.setOnDismissListener(() -> adjustingVolume = false);
-        volumeButton.setOnClickListener(v -> {
-            if (volumePopup.isShowing()) volumePopup.dismiss();
-            else volumePopup.showAsDropDown(volumeButton, 0,
-                -volumeButton.getHeight() - volumePopup.getHeight() - dp(10), Gravity.END);
-        });
         volume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onStartTrackingTouch(SeekBar bar) { adjustingVolume = true; }
             @Override public void onStopTrackingTouch(SeekBar bar) { adjustingVolume = false; }
@@ -868,6 +946,7 @@ public final class MainActivity extends Activity {
                 queueVolume(progress);
             }
         });
+        return volumeRow;
     }
 
     private void queueVolume(int level) {
@@ -882,8 +961,10 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshVolume(Playback state) {
+        View surface = tvMode ? tvVolumeRow : volumeButton;
+        if (surface == null) return;
         int level = state == null ? -1 : state.volume;
-        volumeButton.setVisibility(level < 0 ? View.GONE : View.VISIBLE);
+        surface.setVisibility(level < 0 ? View.GONE : View.VISIBLE);
         if (level < 0) dismissVolume();
         if (level >= 0 && !adjustingVolume && android.os.SystemClock.elapsedRealtime() >= volumeQuietUntil) {
             volume.setProgress(level);
@@ -902,14 +983,15 @@ public final class MainActivity extends Activity {
         thumb.setSize(dp(12), dp(12));
         seek.setThumb(thumb);
         seek.setThumbOffset(dp(12) / 2);
-        timelinePanel.addView(seek);
+        if (tvMode) timelinePanel.addView(seek, new LinearLayout.LayoutParams(-1, dp(34)));
+        else timelinePanel.addView(seek);
         LinearLayout times = row();
         elapsed = label("", 12, dim, false);
         times.addView(elapsed, new LinearLayout.LayoutParams(0, -2, 1));
         duration = label("", 12, dim, false);
         times.addView(duration);
         times.setPadding(dp(7), 0, dp(7), 0);
-        timelinePanel.addView(times);
+        if (!tvMode) timelinePanel.addView(times);
         card.addView(timelinePanel, new LinearLayout.LayoutParams(-1, -2));
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onStartTrackingTouch(SeekBar bar) { seeking = selectedSource(); }
@@ -972,15 +1054,20 @@ public final class MainActivity extends Activity {
         refreshTimeline(active);
         refreshVolume(value);
         boolean playing = active != null && active.playing;
-        title.setText(value == null ? tr(tvMode ? (tv.paired == null ? "Подключи телевизор" : "Телевизор недоступен") :
-            "ПК недоступен") : active == null ? tr("Нет воспроизведения") : active.displayTitle());
-        sourceLabel.setText(active == null ? "" :
-            active.artist.isEmpty() ? active.app + "  ›" : active.artist + "  ·  " + active.app + "  ›");
-        sourceLabel.setEnabled(active != null);
         enabled(previous, active != null && active.previous);
         enabled(next, active != null && active.next);
         enabled(toggle, value == null || active != null && active.toggle);
         showPlayIcon(value == null ? 2 : playing ? 1 : 0);
+        if (tvMode) {
+            updateTvRating(tvLike, active, 1);
+            updateTvRating(tvDislike, active, 2);
+            return;
+        }
+        title.setText(value == null ? tr("ПК недоступен") :
+            active == null ? tr("Нет воспроизведения") : active.displayTitle());
+        sourceLabel.setText(active == null ? "" :
+            active.artist.isEmpty() ? active.app + "  ›" : active.artist + "  ·  " + active.app + "  ›");
+        sourceLabel.setEnabled(active != null);
         if (value != null && value.art != null && Appearance.showArtwork(this)) {
             artwork.setPadding(0, 0, 0, 0);
             artwork.clearColorFilter();
@@ -994,13 +1081,23 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void updateTvRating(ImageView button, Playback.Source active, int flag) {
+        boolean available = active != null && (active.rating & flag) != 0;
+        boolean selected = available && (active.ratingSelected & flag) != 0;
+        button.setVisibility(available ? View.VISIBLE : View.INVISIBLE);
+        if (selected == button.isSelected()) return;
+        button.setSelected(selected);
+        button.setColorFilter(selected ? onAccent : text);
+        button.setBackground(ripple(selected ? accent : raised, 18));
+    }
+
     private void connectionStatus(Playback value) {
         Pairing connection = tvMode ? tv.paired : PhoneLink.connection(this);
         String computer = connection == null ? "" : connection.name;
         String state = tvMode && "permission".equals(tv.status) ? tr("Нет доступа к плеерам") :
             !tvMode && pairing ? tr("Подключаемся…") : value != null ? tr("Подключён") :
             (!tvMode ? PhoneLink.accessDenied : "unauthorized".equals(tv.status)) ? tr("Нужна новая привязка") : tr("Нет связи");
-        String caption = state + (computer.isEmpty() ? "" : " · " + computer);
+        String caption = state + (computer.isEmpty() || tvMode ? "" : " · " + computer);
         if (!caption.contentEquals(status.getText())) status.setText(caption);
     }
 

@@ -15,6 +15,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.FrameLayout;
@@ -27,14 +28,22 @@ import com.google.zxing.BarcodeFormat;
 import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 public final class TvHostActivity extends Activity {
+    private enum Screen { CONNECTION, SETTINGS, REMOTES }
     private final Handler ui = new Handler(Looper.getMainLooper());
     private Appearance.Palette colors;
     private Typeface regular, medium;
-    private ScrollView connectionPage, settingsPage;
-    private Button connectionTab, settingsTab, permission, pair, stop;
+    private ScrollView connectionPage, settingsPage, remotesPage;
+    private Button connectionTab, settingsTab, remotesTab, permission, pair, stop;
     private LinearLayout qrIntro, confirmation;
+    private LinearLayout remoteList;
+    private Screen currentScreen;
+    private Map<String, String> visibleRemotes;
+    private String removingRemote, appearanceFocus;
     private TextView status, controllers, qrTitle, qrHint, navigationStatus;
     private ImageView code;
     private String shown;
@@ -72,17 +81,27 @@ public final class TvHostActivity extends Activity {
         brand.addView(wordmark);
         rail.addView(brand);
         spacer(rail, 27);
-        connectionTab = button(rail, "Подключение", R.drawable.ic_tv, () -> showPage(false));
-        settingsTab = button(rail, "Настройки", R.drawable.ic_settings, () -> showPage(true));
+        connectionTab = button(rail, "Подключение", R.drawable.ic_tv, () -> showPage(Screen.CONNECTION));
+        settingsTab = button(rail, "Настройки", R.drawable.ic_settings, () -> showPage(Screen.SETTINGS));
+        remotesTab = button(rail, "Пульты", R.drawable.ic_phone, () -> showPage(Screen.REMOTES));
 
         FrameLayout pages = new FrameLayout(this);
         shell.addView(pages, new LinearLayout.LayoutParams(0, -1, 1));
         connectionPage = page(pages);
         settingsPage = page(pages);
+        remotesPage = page(pages);
         buildConnection((LinearLayout) connectionPage.getChildAt(0), compact);
         buildSettings((LinearLayout) settingsPage.getChildAt(0));
+        buildRemotes((LinearLayout) remotesPage.getChildAt(0));
         refresh();
-        showPage(bundle != null && bundle.getBoolean("settings"));
+        showPage(bundle == null ? Screen.CONNECTION : Screen.values()[bundle.getInt("screen")]);
+        if (bundle != null && currentScreen == Screen.SETTINGS) {
+            View focus = settingsPage.findViewWithTag(bundle.getString("appearanceFocus", ""));
+            settingsPage.post(() -> {
+                if (focus != null) focus.requestFocus();
+                settingsPage.scrollTo(0, bundle.getInt("settingsScroll"));
+            });
+        }
     }
 
     private ScrollView page(FrameLayout pages) {
@@ -127,6 +146,7 @@ public final class TvHostActivity extends Activity {
         });
         stop = button(controls, "Отключить все пульты", R.drawable.ic_unlink, () -> {
             confirmation.setVisibility(View.VISIBLE);
+            enter(confirmation, 8, 0);
             confirmation.getChildAt(1).requestFocus();
         });
         confirmation = column();
@@ -188,23 +208,131 @@ public final class TvHostActivity extends Activity {
         navigation.addView(navigationStatus);
         button(navigation, "Доступ к навигации", R.drawable.ic_right,
             () -> openSystem(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+        spacer(page, 11);
+        LinearLayout appearance = card(16);
+        page.addView(appearance);
+        appearance.addView(label(tr("Оформление"), 19, colors.text, true));
+        TextView theme = label(tr("Тема"), 14, colors.dim, true);
+        appearance.addView(theme);
+        for (String value : new String[]{"system", "light", "dark"}) {
+            String title = "system".equals(value) ? "Системная" : "light".equals(value) ? "Светлая" : "Тёмная";
+            int glyph = "system".equals(value) ? R.drawable.ic_monitor : "light".equals(value) ? R.drawable.ic_sun : R.drawable.ic_moon;
+            appearanceButton(appearance, title, glyph, "theme", value, Appearance.theme(this));
+        }
+        spacer(appearance, 12);
+        appearance.addView(label(tr("Акцентный цвет"), 14, colors.dim, true));
+        LinearLayout accents = new LinearLayout(this);
+        appearance.addView(accents);
+        for (Appearance.Colorway color : Appearance.Colorway.values()) {
+            LinearLayout item = column();
+            LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(0, -2, 1);
+            size.rightMargin = dp(4);
+            accents.addView(item, size);
+            Button swatch = appearanceButton(item, color.label, R.drawable.ic_selected, "accent", color.key, Appearance.accentKey(this));
+            swatch.setCompoundDrawableTintList(ColorStateList.valueOf(Appearance.palette(color.key, Appearance.dark(this)).accent));
+        }
     }
 
-    private void showPage(boolean settings) {
-        connectionPage.setVisibility(settings ? View.GONE : View.VISIBLE);
-        settingsPage.setVisibility(settings ? View.VISIBLE : View.GONE);
-        connectionTab.setSelected(!settings);
-        settingsTab.setSelected(settings);
-        (settings ? settingsTab : connectionTab).requestFocus();
+    private Button appearanceButton(LinearLayout parent, String title, int glyph, String setting, String value, String current) {
+        Button choice = button(parent, title, glyph, () -> {
+            if (value.equals(Pairing.prefs(this).getString(setting, setting.equals("theme") ? "system" : "green"))) return;
+            appearanceFocus = setting + value;
+            Pairing.prefs(this).edit().putString(setting, value).apply();
+            recreate();
+        });
+        choice.setTag(setting + value);
+        choice.setSelected(value.equals(current));
+        return choice;
+    }
+
+    private void buildRemotes(LinearLayout page) {
+        page.addView(label(tr("Привязанные пульты"), 32, colors.text, true));
+        spacer(page, 18);
+        remoteList = card(16);
+        page.addView(remoteList);
+    }
+
+    private void refreshRemotes() {
+        Map<String, String> latest = TvHostService.controllerNames(this);
+        if (latest.equals(visibleRemotes)) return;
+        visibleRemotes = latest;
+        if (removingRemote != null && !latest.containsKey(removingRemote)) removingRemote = null;
+        renderRemotes(false);
+    }
+
+    private void renderRemotes(boolean focusContent) {
+        remoteList.removeAllViews();
+        List<Map.Entry<String, String>> entries = new ArrayList<>(visibleRemotes.entrySet());
+        entries.sort(Map.Entry.<String, String>comparingByValue(String.CASE_INSENSITIVE_ORDER).thenComparing(Map.Entry.comparingByKey()));
+        if (entries.isEmpty()) remoteList.addView(label(tr("Нет привязанных пультов"), 16, colors.dim, false));
+        Button first = null;
+        for (int i = 0; i < entries.size(); i++) {
+            Map.Entry<String, String> entry = entries.get(i);
+            String key = entry.getKey();
+            String name = entry.getValue().isEmpty() ? tr("Пульт {0}").replace("{0}", Integer.toString(i + 1)) : entry.getValue();
+            Button item = button(remoteList, name, R.drawable.ic_phone, () -> {
+                removingRemote = key;
+                renderRemotes(true);
+            });
+            item.setText(name);
+            item.setSingleLine(true);
+            item.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            if (first == null) first = item;
+            if (!key.equals(removingRemote)) continue;
+            LinearLayout confirm = card(10);
+            remoteList.addView(confirm);
+            confirm.addView(label(tr("Отвязать «{0}»?").replace("{0}", name), 16, colors.text, true));
+            Button cancel = button(confirm, "Отмена", R.drawable.ic_close, () -> {
+                removingRemote = null;
+                renderRemotes(true);
+            });
+            button(confirm, "Отвязать", R.drawable.ic_unlink, () -> {
+                TvHostService host = TvHostService.instance;
+                if (host == null || !host.revokeController(key)) {
+                    android.widget.Toast.makeText(this, tr("Не удалось отключить пульты."), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                removingRemote = null;
+                refreshRemotes();
+                remotesTab.requestFocus();
+            });
+            if (focusContent) {
+                enter(confirm, 7, 0);
+                cancel.requestFocus();
+            }
+        }
+        remotesTab.setNextFocusRightId(first == null ? View.NO_ID : first.getId());
+        if (focusContent && removingRemote == null) (first == null ? remotesTab : first).requestFocus();
+    }
+
+    private void showPage(Screen screen) {
+        boolean changed = currentScreen != screen;
+        currentScreen = screen;
+        if (screen == Screen.REMOTES) refreshRemotes();
+        connectionPage.setVisibility(screen == Screen.CONNECTION ? View.VISIBLE : View.GONE);
+        settingsPage.setVisibility(screen == Screen.SETTINGS ? View.VISIBLE : View.GONE);
+        remotesPage.setVisibility(screen == Screen.REMOTES ? View.VISIBLE : View.GONE);
+        connectionTab.setSelected(screen == Screen.CONNECTION);
+        settingsTab.setSelected(screen == Screen.SETTINGS);
+        remotesTab.setSelected(screen == Screen.REMOTES);
+        Button tab = screen == Screen.CONNECTION ? connectionTab : screen == Screen.SETTINGS ? settingsTab : remotesTab;
+        tab.requestFocus();
+        if (changed) enter(screen == Screen.CONNECTION ? connectionPage : screen == Screen.SETTINGS ? settingsPage : remotesPage, 0, 15);
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
-        state.putBoolean("settings", settingsPage.getVisibility() == View.VISIBLE);
+        if (currentScreen == null) return;
+        state.putInt("screen", currentScreen.ordinal());
+        state.putInt("settingsScroll", settingsPage.getScrollY());
+        state.putString("appearanceFocus", appearanceFocus);
     }
 
     @Override public void onBackPressed() {
-        if (settingsPage.getVisibility() == View.VISIBLE) showPage(false);
+        if (currentScreen == Screen.REMOTES && removingRemote != null) {
+            removingRemote = null;
+            renderRemotes(true);
+        } else if (currentScreen != Screen.CONNECTION) showPage(Screen.CONNECTION);
         else if (confirmation.getVisibility() == View.VISIBLE) cancelDisconnect();
         else super.onBackPressed();
     }
@@ -218,6 +346,15 @@ public final class TvHostActivity extends Activity {
     }
 
     @Override protected void onPause() { ui.removeCallbacks(update); super.onPause(); }
+
+    @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        boolean handled = super.dispatchKeyEvent(event);
+        int key = event.getKeyCode();
+        if (handled && event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0 &&
+            (key >= KeyEvent.KEYCODE_DPAD_UP && key <= KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER))
+            TvFeedback.pulse(this);
+        return handled;
+    }
 
     private void openSystem(String action) {
         try { startActivity(new Intent(action)); }
@@ -261,6 +398,7 @@ public final class TvHostActivity extends Activity {
             host == null ? "Покажи QR-код, чтобы подключить телефон." : "Пульт готов");
         String count = tr("Привязано пультов: {0}").replace("{0}", Integer.toString(TvHostService.controllerCount(this)));
         if (!count.contentEquals(controllers.getText())) controllers.setText(count);
+        if (currentScreen == Screen.REMOTES || visibleRemotes == null) refreshRemotes();
         updateText(navigationStatus, hasNavigationAccess() ?
             "Системный доступ разрешён" : "Разреши доступ к навигации на ТВ.");
     }
@@ -284,6 +422,7 @@ public final class TvHostActivity extends Activity {
                     for (int y = 0; y < 500; y++) for (int x = 0; x < 500; x++)
                         pixels[y * 500 + x] = matrix.get(x, y) ? Color.BLACK : Color.WHITE;
                     code.setImageBitmap(Bitmap.createBitmap(pixels, 500, 500, Bitmap.Config.ARGB_8888));
+                    enter(code, 8, 0);
                 } catch (WriterException ignored) { }
             }
             shown = current;
@@ -320,6 +459,10 @@ public final class TvHostActivity extends Activity {
         background.addState(new int[0], shape(colors.raised, 14));
         button.setBackground(background);
         button.setStateListAnimator(null);
+        button.setOnFocusChangeListener((view, focused) -> {
+            if (android.animation.ValueAnimator.areAnimatorsEnabled())
+                view.animate().scaleX(focused ? 1.025f : 1f).scaleY(focused ? 1.025f : 1f).setDuration(125).start();
+        });
         button.setOnClickListener(v -> action.run());
         LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-1, dp(45));
         size.topMargin = dp(5);
@@ -367,6 +510,16 @@ public final class TvHostActivity extends Activity {
 
     private void spacer(LinearLayout box, int size) {
         box.addView(new View(this), new LinearLayout.LayoutParams(1, dp(size)));
+    }
+
+    private void enter(View view, int y, int x) {
+        if (!android.animation.ValueAnimator.areAnimatorsEnabled()) return;
+        view.animate().cancel();
+        view.setAlpha(0f);
+        view.setTranslationX(dp(x));
+        view.setTranslationY(dp(y));
+        view.animate().alpha(1f).translationX(0).translationY(0).setDuration(210)
+            .setInterpolator(new android.view.animation.PathInterpolator(.2f, .75f, .25f, 1f)).start();
     }
 
     private ImageView icon(int resource, int tint, int padding) {

@@ -276,3 +276,10 @@ Windows не смогла сохранить привязку. Проверь д
 Настройки → Подключение → Телевизор|Settings → Connection → TV
 Один QR-код на каждый телефон|One QR code per phone
 Пульт готов|Remote ready
+Меню питания телевизора|TV power menu
+Системная|System
+Пульты|Remotes
+Привязанные пульты|Paired remotes
+Нет привязанных пультов|No paired remotes
+Пульт {0}|Remote {0}
+Отвязать «{0}»?|Unpair “{0}”?

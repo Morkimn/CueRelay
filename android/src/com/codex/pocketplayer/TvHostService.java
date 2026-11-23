@@ -44,6 +44,7 @@ public final class TvHostService extends Service {
     private static final String CHANNEL = "cuerelay-tv-control";
     private static final String HASH = "tv-controller-hash";
     private static final String CONTROLLERS = "tv-controller-hashes";
+    private static final String CONTROLLER_NAMES = "tv-controller-names";
     private static final int MAX_CONTROLLERS = 16;
     static final String ENABLED = "tv-host-enabled";
     static final String KEEP_AT_BOOT = "tv-start-at-boot";
@@ -98,11 +99,31 @@ public final class TvHostService extends Service {
 
     synchronized void revoke() {
         invitation = null;
-        if (!Pairing.prefs(this).edit().remove(HASH).remove(CONTROLLERS).commit())
+        if (!Pairing.prefs(this).edit().remove(HASH).remove(CONTROLLERS).remove(CONTROLLER_NAMES).commit())
             throw new IllegalStateException("Could not revoke TV controllers");
     }
 
     static int controllerCount(Context context) { return controllers(context).size(); }
+
+    static java.util.Map<String, String> controllerNames(Context context) {
+        JSONObject names = names(context);
+        java.util.Map<String, String> result = new java.util.HashMap<>();
+        for (String key : controllers(context)) result.put(key, names.optString(key));
+        return result;
+    }
+
+    synchronized boolean revokeController(String key) {
+        java.util.Set<String> keys = controllers(this);
+        if (!keys.remove(key)) return true;
+        JSONObject names = names(this);
+        names.remove(key);
+        return saveControllers(keys, names);
+    }
+
+    private static JSONObject names(Context context) {
+        try { return new JSONObject(Pairing.prefs(context).getString(CONTROLLER_NAMES, "{}")); }
+        catch (org.json.JSONException invalid) { return new JSONObject(); }
+    }
 
     private static java.util.Set<String> controllers(Context context) {
         android.content.SharedPreferences prefs = Pairing.prefs(context);
@@ -112,9 +133,9 @@ public final class TvHostService extends Service {
         return keys;
     }
 
-    private void saveControllers(java.util.Set<String> keys) {
-        if (!Pairing.prefs(this).edit().putStringSet(CONTROLLERS, keys).remove(HASH).commit())
-            throw new IllegalStateException("Could not save TV controllers");
+    private boolean saveControllers(java.util.Set<String> keys, JSONObject names) {
+        return Pairing.prefs(this).edit().putStringSet(CONTROLLERS, keys)
+            .putString(CONTROLLER_NAMES, names.toString()).remove(HASH).commit();
     }
 
     private void serve() {
@@ -214,33 +235,50 @@ public final class TvHostService extends Service {
                 if (SystemClock.elapsedRealtime() >= expires || !TvLink.matches(invitation, token)) return denied;
                 if (keys.size() >= MAX_CONTROLLERS) return new JSONObject().put("error", "controller_limit");
                 String credential = TvLink.randomToken();
-                keys.add(hash(credential));
-                saveControllers(keys);
+                String key = hash(credential);
+                keys.add(key);
+                JSONObject names = names(this).put(key, controllerName(request));
+                if (!saveControllers(keys, names)) throw new IllegalStateException("Could not save TV controllers");
                 invitation = null;
                 return new JSONObject().put("token", credential).put("device", PhoneMedia.deviceName(this));
             }
             String key = hash(token);
             if (keys.stream().noneMatch(saved -> TvLink.matches(saved, key))) return denied;
             if ("forget".equals(operation)) {
-                keys.remove(key);
-                saveControllers(keys);
+                if (!revokeController(key)) throw new IllegalStateException("Could not remove TV controller");
                 return new JSONObject();
             }
+            if ("state".equals(operation) && request.has("device")) {
+                String reported = controllerName(request);
+                JSONObject names = names(this);
+                if (!reported.isEmpty() && !reported.equals(names.optString(key)))
+                    saveControllers(keys, names.put(key, reported));
+            }
         }
-        boolean navigation = TvNavigationService.instance != null &&
+        TvNavigationService controls = TvNavigationService.instance;
+        boolean navigation = controls != null &&
             Pairing.prefs(this).getBoolean(TvNavigationService.ENABLED, false);
         if ("navigation".equals(operation)) {
             JSONObject command = request.optJSONObject("command");
             if (!navigation || command == null || !navigate(command.optString("key")))
                 return new JSONObject().put("error", "unavailable");
         }
-        JSONObject state = media.report().put("navigation", navigation);
+        JSONObject state = media.report().put("navigation", navigation)
+            .put("powerMenu", navigation && controls.supportsPowerMenu());
         if ("command".equals(operation)) {
             JSONObject command = request.optJSONObject("command");
             if (command == null || !media.apply(new JSONObject().put("commands", new JSONArray().put(command))))
                 return new JSONObject().put("error", "unavailable");
         } else if (!"state".equals(operation) && !"navigation".equals(operation)) return denied;
+        if (!"state".equals(operation)) TvFeedback.pulse(this);
         return state;
+    }
+
+    private static String controllerName(JSONObject request) {
+        String name = request.optString("device").replaceAll("[\\p{Cc}\\p{Cf}]", "").trim();
+        int length = Math.min(64, name.length());
+        if (length > 0 && Character.isHighSurrogate(name.charAt(length - 1))) length--;
+        return name.substring(0, length);
     }
 
     private boolean navigate(String key) {

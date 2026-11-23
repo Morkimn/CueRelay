@@ -29,7 +29,8 @@ final class Appearance {
     }
 
     static boolean sync(Context context) {
-        return Pairing.prefs(context).getBoolean(SYNC, true);
+        return !context.getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+            && Pairing.prefs(context).getBoolean(SYNC, true);
     }
 
     static void takeRemote(Context context, Playback state) {

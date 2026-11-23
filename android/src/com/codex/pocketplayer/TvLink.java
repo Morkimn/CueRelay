@@ -65,10 +65,12 @@ final class TvLink {
     private final Pairing connection;
     private final SSLSocketFactory factory;
     private final ConnectivityManager connectivity;
+    private final String deviceName;
 
     TvLink(Context context, Pairing connection) throws Exception {
         this.connection = connection;
         connectivity = context.getSystemService(ConnectivityManager.class);
+        deviceName = PhoneMedia.deviceName(context);
         factory = DeskClient.sockets(DeskClient.pinnedTrust(connection.fingerprint));
     }
 
@@ -112,6 +114,7 @@ final class TvLink {
                 tls.setSoTimeout(2400);
                 tls.startHandshake();
                 JSONObject request = new JSONObject().put("op", operation).put("token", connection.secret);
+                if ("pair".equals(operation) || "state".equals(operation)) request.put("device", deviceName);
                 if (command != null) request.put("command", command);
                 DataOutputStream out = new DataOutputStream(tls.getOutputStream());
                 out.writeUTF(request.toString());

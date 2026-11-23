@@ -21,6 +21,7 @@ public final class TvNavigationService extends AccessibilityService {
         if (!Pairing.prefs(this).getBoolean(ENABLED, false)) return false;
         if ("back".equals(key)) return performGlobalAction(GLOBAL_ACTION_BACK);
         if ("home".equals(key)) return performGlobalAction(GLOBAL_ACTION_HOME);
+        if ("power".equals(key)) return supportsPowerMenu() && performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
         final int direction;
         switch (key) {
             case "up": direction = View.FOCUS_UP; break;
@@ -43,6 +44,13 @@ public final class TvNavigationService extends AccessibilityService {
                 finally { to.recycle(); }
             } finally { focused.recycle(); }
         } finally { root.recycle(); }
+    }
+
+    boolean supportsPowerMenu() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return true;
+        for (AccessibilityNodeInfo.AccessibilityAction action : getSystemActions())
+            if (action.getId() == GLOBAL_ACTION_POWER_DIALOG) return true;
+        return false;
     }
 
     private static boolean click(AccessibilityNodeInfo node) {

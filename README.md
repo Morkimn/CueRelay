@@ -32,7 +32,9 @@ Install the same CueRelay Android build on the phone and Android TV or Google TV
 
 On the TV, **TV settings** lets you configure startup, artwork sharing, and navigation. To use the directional pad on the phone, turn on **TV navigation** and enable CueRelay under **Navigation access**. Directional navigation depends on whether the app on the TV exposes focusable controls to Android. The navigation buttons can be hidden in the phone's TV settings.
 
-Choose **Add a remote by QR** on the TV once for each phone. A TV can remember up to 16 phones. Unpairing from a phone disconnects only that phone. **Disconnect all remotes** on the TV revokes all paired phones and stops the remote service.
+Choose **Add a remote by QR** on the TV once for each phone. A TV can remember up to 16 phones. Open **Remotes** on the TV to unpair a specific phone. **Disconnect all remotes** revokes every paired phone and stops the remote service.
+
+The phone's TV remote includes a power button when Android TV exposes a system power menu. The options in that menu depend on the TV. The TV can use its own theme and accent color independently of the phone and PC.
 
 The TV shares the playback and seek controls advertised by active Android media sessions, plus its Android media volume when adjustable. The connection uses TLS with a pinned TV certificate. The QR carries a short-lived single-use invitation. The TV can revoke the paired phone with **Disable remote**. The companion can run in the background after setup. An IP address change can require scanning a new code. ADB is only needed for development or sideloading when the TV has no other means to install the APK. [Android media sessions](https://developer.android.com/reference/android/media/session/MediaSessionManager)
 
